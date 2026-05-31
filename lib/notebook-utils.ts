@@ -1,4 +1,4 @@
-import { TextCell, DrawingCell, Notebook } from './notebook-types.js';
+import type { TextCell, DrawingCell, Notebook } from './notebook-types';
 
 export function createId(): string {
     if (typeof globalThis.crypto?.randomUUID === "function") {
@@ -33,7 +33,7 @@ export function createDefaultNotebook(): Notebook {
     return {
         id: createId(),
         title: "New note",
-        cells: [createTextCell()],
+        cells: [createTextCell(), createDrawingCell()],
         createdAt: now,
         updatedAt: now,
     };
