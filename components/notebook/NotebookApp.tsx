@@ -3,9 +3,41 @@
 import { useState } from "react";
 import type { Notebook } from "@/lib/notebook-types";
 import { createDefaultNotebook } from "@/lib/notebook-utils";
+import NotebookSidebar from "@/components/notebook/NotebookSidebar";
 
 
 export default function NotebookApp() {
+
+    function createNotebook() {
+        const notebook = createDefaultNotebook();
+
+        setNotebooks((currentNotebooks) => [notebook, ...currentNotebooks]);
+        setActiveNotebookId(notebook.id);
+    }
+
+    function deleteNotebook(id: string) {
+        const shouldDelete = window.confirm("Delete this notebook?");
+
+        if (!shouldDelete) {
+        return;
+        }
+
+        setNotebooks((currentNotebooks) => {
+        const remaining = currentNotebooks.filter((notebook) => notebook.id !== id);
+
+        if (remaining.length === 0) {
+            const replacement = createDefaultNotebook();
+            setActiveNotebookId(replacement.id);
+            return [replacement];
+        }
+
+        if (activeNotebookId === id) {
+            setActiveNotebookId(remaining[0].id);
+        }
+
+        return remaining;
+        });
+    }
 
     const [notebooks, setNotebooks] = useState<Notebook[]>(() => {
         const notebook = createDefaultNotebook();
@@ -19,24 +51,23 @@ export default function NotebookApp() {
     const activeNotebook =
         notebooks.find((notebook) => notebook.id === activeNotebookId) ?? notebooks[0];
 
+    const [searchQuery, setSearchQuery] = useState("");
+    const filteredNotebooks = notebooks.filter((notebook) =>
+        notebook.title.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+
     return (
     <main className="flex min-h-screen bg-slate-100 text-slate-950">
-      <aside className="w-72 border-r border-slate-200 bg-white">
-        <div className="p-4">
-          <h1 className="text-lg font-semibold">Notebook</h1>
-        </div>
-         <nav className="space-y-2 p-3">
-            {notebooks.map((notebook) => (
-            <button
-                key={notebook.id}
-                className="w-full rounded-md bg-slate-900 px-3 py-2 text-left text-sm text-white"
-                onClick={() => setActiveNotebookId(notebook.id)}
-            >
-                {notebook.title}
-            </button>
-            ))}
-        </nav>
-      </aside>
+      <NotebookSidebar 
+        notebooks={filteredNotebooks}
+        activeNotebookId={activeNotebookId}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        onSelectNotebook={setActiveNotebookId}
+        onCreateNotebook={createNotebook}
+        onDeleteNotebook={deleteNotebook}
+      />
       <section className="flex flex-1 flex-col">
         <header className="border-b border-slate-200 bg-white px-8 py-5">
           <p className="text-sm text-slate-500">Notebook</p>
