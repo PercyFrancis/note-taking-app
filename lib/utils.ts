@@ -1,4 +1,16 @@
-import type { TextCell, DrawingCell, Notebook } from './notebook-types';
+import type { TextCell, DrawingCell, Notebook, NotebookUpdate } from './types';
+
+
+export function applyNotebookUpdate(
+    notebook: Notebook,
+    fields: NotebookUpdate
+    ): Notebook {
+    return {
+        ...notebook,
+        ...fields,
+        updatedAt: Date.now(),
+    };
+}
 
 export function createId(): string {
     if (typeof globalThis.crypto?.randomUUID === "function") {
