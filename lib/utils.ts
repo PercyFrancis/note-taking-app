@@ -1,74 +1,73 @@
-import type { TextCell, DrawingCell, Notebook, NotebookUpdate } from './types';
-
+import type { DrawingCell, Notebook, NotebookUpdate, TextCell } from "./types";
 
 export function applyNotebookUpdate(
-    notebook: Notebook,
-    fields: NotebookUpdate
-    ): Notebook {
-    return {
-        ...notebook,
-        ...fields,
-        updatedAt: Date.now(),
-    };
+  notebook: Notebook,
+  fields: NotebookUpdate,
+): Notebook {
+  return {
+    ...notebook,
+    ...fields,
+    updatedAt: Date.now(),
+  };
 }
 
 export function createId(): string {
-    if (typeof globalThis.crypto?.randomUUID === "function") {
-      return globalThis.crypto.randomUUID();
-    }
-
-    return Date.now().toString(36) + Math.random().toString(36).slice(2);
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
   }
 
- export function formatDate(timestamp: number): string {
-    const date = new Date(timestamp);
+  return Date.now().toString(36) + Math.random().toString(36).slice(2);
+}
 
-    if (Number.isNaN(date.getTime())) {
-        return "Invalid date";
-    }
+export function formatDate(timestamp: number): string {
+  const date = new Date(timestamp);
 
-    return date.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-    });
+  if (Number.isNaN(date.getTime())) {
+    return "Invalid date";
+  }
+
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
 }
 export function countWords(text: string): number {
-    const clean: string = text.trim();
-    if(clean === "") {
-        return 0;
-    }
-    return clean.split(/\s+/).length;
+  const clean: string = text.trim();
+  if (clean === "") {
+    return 0;
+  }
+  return clean.split(/\s+/).length;
 }
 export function createDefaultNotebook(): Notebook {
-    const now = Date.now();
+  const now = Date.now();
 
-    return {
-        id: createId(),
-        title: "New note",
-        cells: [createTextCell(), createDrawingCell()],
-        createdAt: now,
-        updatedAt: now,
-    };
+  return {
+    id: createId(),
+    title: "New note",
+    cells: [createTextCell(), createDrawingCell()],
+    createdAt: now,
+    updatedAt: now,
+  };
 }
 export function createTextCell(): TextCell {
-    const now = Date.now();
+  const now = Date.now();
 
-    return {
-      id: createId(),
-      type: "text",
-      content: "",
-      createdAt: now,
-      updatedAt: now,
-    };
+  return {
+    id: createId(),
+    type: "text",
+    content: "",
+    createdAt: now,
+    updatedAt: now,
+  };
 }
 export function createDrawingCell(): DrawingCell {
-    const now = Date.now();
+  const now = Date.now();
 
-    return {
-      id: createId(),
-      type: "drawing",
-      drawing: null,
-      createdAt: now,
-      updatedAt: now,
-    };
+  return {
+    id: createId(),
+    type: "drawing",
+    drawing: null,
+    createdAt: now,
+    updatedAt: now,
+  };
 }
