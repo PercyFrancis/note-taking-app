@@ -1,5 +1,5 @@
 "use client";
-import type { Notebook } from "@/lib/notebook-types";
+import type { Notebook } from "@/lib/types";
 
 interface NotebookSidebarProps {
     notebooks: Notebook[];
@@ -71,7 +71,7 @@ export default function NotebookSidebar({
                             }`}
                             aria-label={`Delete ${notebook.title}`}
                         >
-                            x{/* × */}
+                            x
                         </button>
                     </div>
                     );

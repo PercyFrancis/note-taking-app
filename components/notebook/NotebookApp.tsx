@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import type { Notebook } from "@/lib/notebook-types";
-import { createDefaultNotebook } from "@/lib/notebook-utils";
+import type { Notebook, NotebookUpdate } from "@/lib/types";
+import { createDefaultNotebook, createDrawingCell, createTextCell, applyNotebookUpdate } from "@/lib/utils";
 import NotebookSidebar from "@/components/notebook/NotebookSidebar";
+import NotebookEditor from "@/components/notebook/NotebookEditor"
 
 
 export default function NotebookApp() {
@@ -39,6 +40,28 @@ export default function NotebookApp() {
         });
     }
 
+    function updateNotebook(fields: NotebookUpdate) {
+        setNotebooks((currentNotebooks) =>
+            currentNotebooks.map((notebook) =>
+                notebook.id === activeNotebookId
+                ? applyNotebookUpdate(notebook, fields)
+                : notebook
+            )
+        );
+    }
+
+    function addTextCell() {
+        updateNotebook({
+        cells: [...activeNotebook.cells, createTextCell()],
+        });
+    }
+
+    function addDrawingCell() {
+        updateNotebook({
+        cells: [...activeNotebook.cells, createDrawingCell()],
+        });
+    }
+
     const [notebooks, setNotebooks] = useState<Notebook[]>(() => {
         const notebook = createDefaultNotebook();
         return [notebook];
@@ -68,30 +91,14 @@ export default function NotebookApp() {
         onCreateNotebook={createNotebook}
         onDeleteNotebook={deleteNotebook}
       />
-      <section className="flex flex-1 flex-col">
-        <header className="border-b border-slate-200 bg-white px-8 py-5">
-          <p className="text-sm text-slate-500">Notebook</p>
-          <h2 className="text-2xl font-semibold">{activeNotebook.title}</h2>
-        </header>
-        <div className="flex-1 overflow-y-auto px-8 py-6">
-          {activeNotebook.cells.map((cell) => (
-            <article
-            key={cell.id}
-            className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
-            <div className="mb-3 text-xs font-medium uppercase text-slate-400">
-                {cell.type === "text" ? "Text cell" : "Drawing cell"}
-            </div>
-            {cell.type === "text" ? (
-                <p className="leading-7 text-slate-700">
-                {cell.content || "Empty text cell"}
-                </p>
-            ) : (
-                <div className="h-48 rounded-md border border-dashed border-slate-300 bg-slate-50" />
-            )}
-            </article>
-        ))}
-        </div>
-      </section>
+
+      <NotebookEditor
+      notebook={activeNotebook}
+      onUpdateNotebook={updateNotebook}
+      onAddTextCell={addTextCell}
+      onAddDrawingCell={addDrawingCell}
+    />
+      
     </main>
   );
 }
