@@ -1,4 +1,5 @@
 "use client";
+import CellList from "@/components/notebook/CellList";
 import type { Notebook, NotebookUpdate } from "@/lib/types";
 
 interface NotebookEditorProps {
@@ -40,25 +41,7 @@ export default function NotebookEditor({
           </button>
         </div>
       </header>
-      <div className="flex-1 overflow-y-auto px-8 py-6">
-        {notebook.cells.map((cell) => (
-          <article
-            key={cell.id}
-            className="mb-4 rounded-lg border border-slate-200 bg-white p-4"
-          >
-            <div className="mb-3 text-xs font-medium uppercase text-slate-400">
-              {cell.type === "text" ? "Text cell" : "Drawing cell"}
-            </div>
-            {cell.type === "text" ? (
-              <p className="leading-7 text-slate-700">
-                {cell.content || "Empty text cell"}
-              </p>
-            ) : (
-              <div className="h-48 rounded-md border border-dashed border-slate-300 bg-slate-50" />
-            )}
-          </article>
-        ))}
-      </div>
+      <CellList cells={notebook.cells} />
     </section>
   );
 }
