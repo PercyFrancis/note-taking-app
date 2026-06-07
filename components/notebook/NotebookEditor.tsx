@@ -5,8 +5,9 @@ import type { Notebook, NotebookUpdate } from "@/lib/types";
 interface NotebookEditorProps {
   notebook: Notebook;
   onUpdateNotebook: (fields: NotebookUpdate) => void;
-  onAddTextCell: () => void; // temp
-  onAddDrawingCell: () => void; // temp
+  onAddTextCell: () => void;
+  onAddDrawingCell: () => void;
+  onUpdateTextCell: (cellId: string, content: string) => void;
 }
 
 export default function NotebookEditor({
@@ -14,6 +15,7 @@ export default function NotebookEditor({
   onUpdateNotebook,
   onAddTextCell,
   onAddDrawingCell,
+  onUpdateTextCell,
 }: NotebookEditorProps) {
   return (
     <section className="flex flex-1 flex-col">
@@ -41,7 +43,7 @@ export default function NotebookEditor({
           </button>
         </div>
       </header>
-      <CellList cells={notebook.cells} />
+      <CellList cells={notebook.cells} onUpdateTextCell={onUpdateTextCell} />
     </section>
   );
 }

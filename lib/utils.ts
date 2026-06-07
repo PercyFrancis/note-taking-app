@@ -11,6 +11,14 @@ export function applyNotebookUpdate(
   };
 }
 
+export function applyTextCellUpdate(cell: TextCell, content: string): TextCell {
+  return {
+    ...cell,
+    content,
+    updatedAt: Date.now(),
+  };
+}
+
 export function createId(): string {
   if (typeof globalThis.crypto?.randomUUID === "function") {
     return globalThis.crypto.randomUUID();

@@ -1,10 +1,12 @@
+import TextCellEditor from "@/components/notebook/TextCellEditor";
 import type { NotebookCell } from "@/lib/types";
 
 interface CellFrameProps {
   cell: NotebookCell;
+  onUpdateTextCell: (cellId: string, content: string) => void;
 }
 
-export default function CellFrame({ cell }: CellFrameProps) {
+export default function CellFrame({ cell, onUpdateTextCell }: CellFrameProps) {
   return (
     <article className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
@@ -45,9 +47,10 @@ export default function CellFrame({ cell }: CellFrameProps) {
       </div>
 
       {cell.type === "text" ? (
-        <p className="leading-7 text-slate-700">
-          {cell.content || "Empty text cell"}
-        </p>
+        <TextCellEditor
+          cell={cell}
+          onChange={(content) => onUpdateTextCell(cell.id, content)}
+        />
       ) : (
         <div className="h-48 rounded-md border border-dashed border-slate-300 bg-slate-50" />
       )}
