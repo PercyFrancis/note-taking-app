@@ -8,6 +8,7 @@ interface NotebookEditorProps {
   onAddTextCell: () => void;
   onAddDrawingCell: () => void;
   onUpdateTextCell: (cellId: string, content: string) => void;
+  onUpdateDrawingCell: (cellId: string, drawing: string | null) => void;
 }
 
 export default function NotebookEditor({
@@ -16,6 +17,7 @@ export default function NotebookEditor({
   onAddTextCell,
   onAddDrawingCell,
   onUpdateTextCell,
+  onUpdateDrawingCell,
 }: NotebookEditorProps) {
   return (
     <section className="flex flex-1 flex-col">
@@ -43,7 +45,11 @@ export default function NotebookEditor({
           </button>
         </div>
       </header>
-      <CellList cells={notebook.cells} onUpdateTextCell={onUpdateTextCell} />
+      <CellList
+        cells={notebook.cells}
+        onUpdateTextCell={onUpdateTextCell}
+        onUpdateDrawingCell={onUpdateDrawingCell}
+      />
     </section>
   );
 }

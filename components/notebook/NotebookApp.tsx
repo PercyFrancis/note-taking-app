@@ -5,6 +5,7 @@ import NotebookEditor from "@/components/notebook/NotebookEditor";
 import NotebookSidebar from "@/components/notebook/NotebookSidebar";
 import type { Notebook, NotebookUpdate } from "@/lib/types";
 import {
+  applyDrawingCellUpdate,
   applyNotebookUpdate,
   applyTextCellUpdate,
   createDefaultNotebook,
@@ -78,6 +79,16 @@ export default function NotebookApp() {
     });
   }
 
+  function updateDrawingCell(cellId: string, drawing: string | null) {
+    updateNotebook({
+      cells: activeNotebook.cells.map((cell) =>
+        cell.id === cellId && cell.type === "drawing"
+          ? applyDrawingCellUpdate(cell, drawing)
+          : cell,
+      ),
+    });
+  }
+
   const [notebooks, setNotebooks] = useState<Notebook[]>(() => {
     const notebook = createDefaultNotebook();
     return [notebook];
@@ -114,6 +125,7 @@ export default function NotebookApp() {
         onAddTextCell={addTextCell}
         onUpdateTextCell={updateTextCell}
         onAddDrawingCell={addDrawingCell}
+        onUpdateDrawingCell={updateDrawingCell}
       />
     </main>
   );

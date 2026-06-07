@@ -1,12 +1,18 @@
+import DrawingCellEditor from "@/components/notebook/DrawingCellEditor";
 import TextCellEditor from "@/components/notebook/TextCellEditor";
 import type { NotebookCell } from "@/lib/types";
 
 interface CellFrameProps {
   cell: NotebookCell;
   onUpdateTextCell: (cellId: string, content: string) => void;
+  onUpdateDrawingCell: (cellId: string, drawing: string | null) => void;
 }
 
-export default function CellFrame({ cell, onUpdateTextCell }: CellFrameProps) {
+export default function CellFrame({
+  cell,
+  onUpdateTextCell,
+  onUpdateDrawingCell,
+}: CellFrameProps) {
   return (
     <article className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
@@ -52,7 +58,10 @@ export default function CellFrame({ cell, onUpdateTextCell }: CellFrameProps) {
           onChange={(content) => onUpdateTextCell(cell.id, content)}
         />
       ) : (
-        <div className="h-48 rounded-md border border-dashed border-slate-300 bg-slate-50" />
+        <DrawingCellEditor
+          cell={cell}
+          onChange={(drawing) => onUpdateDrawingCell(cell.id, drawing)}
+        />
       )}
     </article>
   );

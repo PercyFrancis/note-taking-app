@@ -19,6 +19,17 @@ export function applyTextCellUpdate(cell: TextCell, content: string): TextCell {
   };
 }
 
+export function applyDrawingCellUpdate(
+  cell: DrawingCell,
+  drawing: string | null,
+): DrawingCell {
+  return {
+    ...cell,
+    drawing,
+    updatedAt: Date.now(),
+  };
+}
+
 export function createId(): string {
   if (typeof globalThis.crypto?.randomUUID === "function") {
     return globalThis.crypto.randomUUID();
