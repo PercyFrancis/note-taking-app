@@ -3,6 +3,7 @@ export type CellType = "text" | "drawing";
 export interface BaseCell {
   id: string;
   type: CellType;
+  heightPx: number;
   createdAt: number;
   updatedAt: number;
 }

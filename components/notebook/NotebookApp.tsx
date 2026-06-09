@@ -5,7 +5,10 @@ import NotebookEditor from "@/components/notebook/NotebookEditor";
 import NotebookSidebar from "@/components/notebook/NotebookSidebar";
 import type { Notebook, NotebookUpdate } from "@/lib/types";
 import {
+  applyCellHeightUpdate,
+  applyDrawingCellUpdate,
   applyNotebookUpdate,
+  applyTextCellUpdate,
   createDefaultNotebook,
   createDrawingCell,
   createTextCell,
@@ -67,6 +70,34 @@ export default function NotebookApp() {
     });
   }
 
+  function updateTextCell(cellId: string, content: string) {
+    updateNotebook({
+      cells: activeNotebook.cells.map((cell) =>
+        cell.id === cellId && cell.type === "text"
+          ? applyTextCellUpdate(cell, content)
+          : cell,
+      ),
+    });
+  }
+
+  function updateDrawingCell(cellId: string, drawing: string | null) {
+    updateNotebook({
+      cells: activeNotebook.cells.map((cell) =>
+        cell.id === cellId && cell.type === "drawing"
+          ? applyDrawingCellUpdate(cell, drawing)
+          : cell,
+      ),
+    });
+  }
+
+  function updateCellHeight(cellId: string, heightPx: number) {
+    updateNotebook({
+      cells: activeNotebook.cells.map((cell) =>
+        cell.id === cellId ? applyCellHeightUpdate(cell, heightPx) : cell,
+      ),
+    });
+  }
+
   const [notebooks, setNotebooks] = useState<Notebook[]>(() => {
     const notebook = createDefaultNotebook();
     return [notebook];
@@ -101,7 +132,10 @@ export default function NotebookApp() {
         notebook={activeNotebook}
         onUpdateNotebook={updateNotebook}
         onAddTextCell={addTextCell}
+        onUpdateTextCell={updateTextCell}
         onAddDrawingCell={addDrawingCell}
+        onUpdateDrawingCell={updateDrawingCell}
+        onUpdateCellHeight={updateCellHeight}
       />
     </main>
   );

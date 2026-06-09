@@ -3,13 +3,27 @@ import type { NotebookCell } from "@/lib/types";
 
 interface CellListProps {
   cells: NotebookCell[];
+  onUpdateTextCell: (cellId: string, content: string) => void;
+  onUpdateDrawingCell: (cellId: string, drawing: string | null) => void;
+  onUpdateCellHeight: (cellId: string, heightPx: number) => void;
 }
 
-export default function CellList({ cells }: CellListProps) {
+export default function CellList({
+  cells,
+  onUpdateTextCell,
+  onUpdateDrawingCell,
+  onUpdateCellHeight,
+}: CellListProps) {
   return (
     <div className="flex-1 overflow-y-auto px-8 py-6">
       {cells.map((cell) => (
-        <CellFrame key={cell.id} cell={cell} />
+        <CellFrame
+          key={cell.id}
+          cell={cell}
+          onUpdateTextCell={onUpdateTextCell}
+          onUpdateDrawingCell={onUpdateDrawingCell}
+          onUpdateCellHeight={onUpdateCellHeight}
+        />
       ))}
     </div>
   );

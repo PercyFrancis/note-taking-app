@@ -1,4 +1,10 @@
-import type { DrawingCell, Notebook, NotebookUpdate, TextCell } from "./types";
+import type {
+  DrawingCell,
+  Notebook,
+  NotebookCell,
+  NotebookUpdate,
+  TextCell,
+} from "./types";
 
 export function applyNotebookUpdate(
   notebook: Notebook,
@@ -7,6 +13,25 @@ export function applyNotebookUpdate(
   return {
     ...notebook,
     ...fields,
+    updatedAt: Date.now(),
+  };
+}
+
+export function applyTextCellUpdate(cell: TextCell, content: string): TextCell {
+  return {
+    ...cell,
+    content,
+    updatedAt: Date.now(),
+  };
+}
+
+export function applyDrawingCellUpdate(
+  cell: DrawingCell,
+  drawing: string | null,
+): DrawingCell {
+  return {
+    ...cell,
+    drawing,
     updatedAt: Date.now(),
   };
 }
@@ -56,6 +81,7 @@ export function createTextCell(): TextCell {
     id: createId(),
     type: "text",
     content: "",
+    heightPx: 160,
     createdAt: now,
     updatedAt: now,
   };
@@ -67,7 +93,19 @@ export function createDrawingCell(): DrawingCell {
     id: createId(),
     type: "drawing",
     drawing: null,
+    heightPx: 360,
     createdAt: now,
     updatedAt: now,
+  };
+}
+
+export function applyCellHeightUpdate(
+  cell: NotebookCell,
+  heightPx: number,
+): NotebookCell {
+  return {
+    ...cell,
+    heightPx,
+    updatedAt: Date.now(),
   };
 }
