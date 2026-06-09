@@ -18,7 +18,8 @@ export default function TextCellEditor({
         value={cell.content}
         onChange={(event) => onChange(event.target.value)}
         placeholder="Write something..."
-        className="min-h-32 w-full resize-y rounded-md border border-slate-200 p-3 text-sm leading-6 text-slate-800 outline-none focus:border-slate-400"
+        style={{ height: cell.heightPx }}
+        className="w-full resize-none rounded-md border border-slate-200 p-3 text-sm leading-6 text-slate-800 outline-none focus:border-slate-400"
       />
 
       <div className="mt-2 flex gap-3 text-xs text-slate-400">

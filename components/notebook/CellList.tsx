@@ -5,12 +5,14 @@ interface CellListProps {
   cells: NotebookCell[];
   onUpdateTextCell: (cellId: string, content: string) => void;
   onUpdateDrawingCell: (cellId: string, drawing: string | null) => void;
+  onUpdateCellHeight: (cellId: string, heightPx: number) => void;
 }
 
 export default function CellList({
   cells,
   onUpdateTextCell,
   onUpdateDrawingCell,
+  onUpdateCellHeight,
 }: CellListProps) {
   return (
     <div className="flex-1 overflow-y-auto px-8 py-6">
@@ -20,6 +22,7 @@ export default function CellList({
           cell={cell}
           onUpdateTextCell={onUpdateTextCell}
           onUpdateDrawingCell={onUpdateDrawingCell}
+          onUpdateCellHeight={onUpdateCellHeight}
         />
       ))}
     </div>

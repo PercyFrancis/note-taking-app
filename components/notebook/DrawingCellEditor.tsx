@@ -23,17 +23,39 @@ export default function DrawingCellEditor({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const isDrawingRef = useRef(false);
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
+  const skipNextRestoreRef = useRef(false);
 
   const [tool, setTool] = useState<"pen" | "eraser">("pen");
   const [color, setColor] = useState("#0f172a");
   const [brushSize, setBrushSize] = useState(4);
 
-  function startDrawing(event: React.MouseEvent<HTMLCanvasElement>) {
+  const canvasWidth = 900;
+  const canvasHeight = cell.heightPx;
+
+  function startDrawing(event: React.PointerEvent<HTMLCanvasElement>) {
+    if (!event.isPrimary || event.button !== 0) return;
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+
+    const point = getCanvasPoint(event);
+
     isDrawingRef.current = true;
-    lastPointRef.current = getCanvasPoint(event);
+    lastPointRef.current = point;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const context = canvas.getContext("2d");
+    if (!context) return;
+
+    configureContext(context);
+
+    context.beginPath();
+    context.arc(point.x, point.y, brushSize / 2, 0, Math.PI * 2);
+    context.fill();
   }
 
-  function draw(event: React.MouseEvent<HTMLCanvasElement>) {
+  function draw(event: React.PointerEvent<HTMLCanvasElement>) {
     if (!isDrawingRef.current) return;
 
     const canvas = canvasRef.current;
@@ -66,7 +88,7 @@ export default function DrawingCellEditor({
     lastPointRef.current = currentPoint;
   }
 
-  function getCanvasPoint(event: React.MouseEvent<HTMLCanvasElement>) {
+  function getCanvasPoint(event: React.PointerEvent<HTMLCanvasElement>) {
     const canvas = event.currentTarget;
     const rect = canvas.getBoundingClientRect();
 
@@ -76,8 +98,12 @@ export default function DrawingCellEditor({
     };
   }
 
-  function stopDrawing() {
+  function stopDrawing(event: React.PointerEvent<HTMLCanvasElement>) {
     if (!isDrawingRef.current) return;
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
 
     isDrawingRef.current = false;
     lastPointRef.current = null;
@@ -86,17 +112,24 @@ export default function DrawingCellEditor({
     if (!canvas) return;
 
     const dataUrl = canvas.toDataURL("image/png");
+
+    skipNextRestoreRef.current = true;
     onChange(dataUrl);
   }
 
   useEffect(() => {
+    if (skipNextRestoreRef.current) {
+      skipNextRestoreRef.current = false;
+      return;
+    }
+
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const context = canvas.getContext("2d");
     if (!context) return;
 
-    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.clearRect(0, 0, canvasWidth, canvasHeight);
 
     if (!cell.drawing) return;
 
@@ -104,11 +137,12 @@ export default function DrawingCellEditor({
 
     image.onload = () => {
       context.globalCompositeOperation = "source-over";
-      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      context.imageSmoothingEnabled = false;
+      context.drawImage(image, 0, 0, canvasWidth, canvasHeight);
     };
 
     image.src = cell.drawing;
-  }, [cell.drawing]);
+  }, [cell.drawing, canvasHeight]);
 
   function clearDrawing() {
     const canvas = canvasRef.current;
@@ -118,7 +152,23 @@ export default function DrawingCellEditor({
     if (!context) return;
 
     context.clearRect(0, 0, canvas.width, canvas.height);
+
+    skipNextRestoreRef.current = true;
     onChange(null);
+  }
+
+  function configureContext(context: CanvasRenderingContext2D) {
+    context.lineWidth = brushSize;
+    context.lineCap = "round";
+    context.lineJoin = "round";
+
+    if (tool === "eraser") {
+      context.globalCompositeOperation = "destination-out";
+    } else {
+      context.globalCompositeOperation = "source-over";
+      context.strokeStyle = color;
+      context.fillStyle = color;
+    }
   }
 
   return (
@@ -207,13 +257,15 @@ export default function DrawingCellEditor({
 
       <canvas
         width={900}
-        height={360}
+        height={cell.heightPx}
+        style={{ aspectRatio: `${canvasWidth} / ${canvasHeight}` }}
         ref={canvasRef}
-        onMouseDown={startDrawing}
-        onMouseMove={draw}
-        onMouseUp={stopDrawing}
-        onMouseLeave={stopDrawing}
-        className="h-64 w-full rounded-md border border-slate-300 bg-white"
+        onPointerDown={startDrawing}
+        onPointerMove={draw}
+        onPointerUp={stopDrawing}
+        onPointerLeave={stopDrawing}
+        onPointerCancel={stopDrawing}
+        className="block w-full touch-none rounded-md border border-slate-300 bg-white"
       />
 
       <p className="mt-2 text-xs text-slate-400">

@@ -6,12 +6,14 @@ interface CellFrameProps {
   cell: NotebookCell;
   onUpdateTextCell: (cellId: string, content: string) => void;
   onUpdateDrawingCell: (cellId: string, drawing: string | null) => void;
+  onUpdateCellHeight: (cellId: string, heightPx: number) => void;
 }
 
 export default function CellFrame({
   cell,
   onUpdateTextCell,
   onUpdateDrawingCell,
+  onUpdateCellHeight,
 }: CellFrameProps) {
   return (
     <article className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
@@ -19,36 +21,53 @@ export default function CellFrame({
         <div className="text-xs font-medium uppercase text-slate-400">
           {cell.type === "text" ? "Text cell" : "Drawing cell"}
         </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 text-xs text-slate-500">
+            Height
+            <input
+              type="range"
+              min={120}
+              max={720}
+              step={20}
+              value={cell.heightPx}
+              onChange={(event) =>
+                onUpdateCellHeight(cell.id, Number(event.target.value))
+              }
+              className="w-28 accent-slate-900"
+            />
+            <span className="w-8 text-right">{cell.heightPx}</span>
+          </label>
 
-        <div className="flex gap-1">
-          <button
-            type="button"
-            disabled
-            className="rounded border px-2 py-1 text-xs text-slate-400"
-          >
-            Up
-          </button>
-          <button
-            type="button"
-            disabled
-            className="rounded border px-2 py-1 text-xs text-slate-400"
-          >
-            Down
-          </button>
-          <button
-            type="button"
-            disabled
-            className="rounded border px-2 py-1 text-xs text-slate-400"
-          >
-            Copy
-          </button>
-          <button
-            type="button"
-            disabled
-            className="rounded border px-2 py-1 text-xs text-slate-400"
-          >
-            Delete
-          </button>
+          <div className="flex gap-1">
+            <button
+              type="button"
+              disabled
+              className="rounded border px-2 py-1 text-xs text-slate-400"
+            >
+              Up
+            </button>
+            <button
+              type="button"
+              disabled
+              className="rounded border px-2 py-1 text-xs text-slate-400"
+            >
+              Down
+            </button>
+            <button
+              type="button"
+              disabled
+              className="rounded border px-2 py-1 text-xs text-slate-400"
+            >
+              Copy
+            </button>
+            <button
+              type="button"
+              disabled
+              className="rounded border px-2 py-1 text-xs text-slate-400"
+            >
+              Delete
+            </button>
+          </div>
         </div>
       </div>
 
