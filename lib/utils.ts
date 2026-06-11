@@ -109,3 +109,82 @@ export function applyCellHeightUpdate(
     updatedAt: Date.now(),
   };
 }
+export function insertCellAfter(
+  cells: NotebookCell[],
+  targetCellId: string,
+  newCell: NotebookCell,
+): NotebookCell[] {
+  const targetIndex = cells.findIndex((cell) => cell.id === targetCellId);
+
+  if (targetIndex === -1) {
+    return [...cells, newCell];
+  }
+
+  return [
+    ...cells.slice(0, targetIndex + 1),
+    newCell,
+    ...cells.slice(targetIndex + 1),
+  ];
+}
+export function deleteCell(
+  cells: NotebookCell[],
+  cellId: string,
+): NotebookCell[] {
+  return cells.filter((cell) => cell.id !== cellId);
+}
+export function duplicateCell(
+  cells: NotebookCell[],
+  cellId: string,
+): NotebookCell[] {
+  const targetCell = cells.find((cell) => cell.id === cellId);
+
+  if (!targetCell) {
+    return cells;
+  }
+  const now = Date.now();
+
+  const copiedCell: NotebookCell = {
+    ...targetCell,
+    id: createId(),
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  return insertCellAfter(cells, cellId, copiedCell);
+}
+
+export function moveItem<T>(
+  items: T[],
+  fromIndex: number,
+  toIndex: number,
+): T[] {
+  if (
+    fromIndex < 0 ||
+    toIndex < 0 ||
+    fromIndex >= items.length ||
+    toIndex >= items.length
+  ) {
+    return items;
+  }
+
+  const nextItems = [...items];
+  const [movedItem] = nextItems.splice(fromIndex, 1);
+  nextItems.splice(toIndex, 0, movedItem);
+
+  return nextItems;
+}
+export function moveCellUp(
+  cells: NotebookCell[],
+  cellId: string,
+): NotebookCell[] {
+  const index = cells.findIndex((cell) => cell.id === cellId);
+  return moveItem(cells, index, index - 1);
+}
+
+export function moveCellDown(
+  cells: NotebookCell[],
+  cellId: string,
+): NotebookCell[] {
+  const index = cells.findIndex((cell) => cell.id === cellId);
+  return moveItem(cells, index, index + 1);
+}

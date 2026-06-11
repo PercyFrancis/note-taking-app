@@ -12,6 +12,11 @@ import {
   createDefaultNotebook,
   createDrawingCell,
   createTextCell,
+  deleteCell,
+  duplicateCell,
+  insertCellAfter,
+  moveCellDown,
+  moveCellUp,
 } from "@/lib/utils";
 
 export default function NotebookApp() {
@@ -98,6 +103,44 @@ export default function NotebookApp() {
     });
   }
 
+  function addTextCellAfter(cellId: string) {
+    updateNotebook({
+      cells: insertCellAfter(activeNotebook.cells, cellId, createTextCell()),
+    });
+  }
+
+  function addDrawingCellAfter(cellId: string) {
+    updateNotebook({
+      cells: insertCellAfter(activeNotebook.cells, cellId, createDrawingCell()),
+    });
+  }
+
+  function removeCell(cellId: string) {
+    const nextCells = deleteCell(activeNotebook.cells, cellId);
+
+    updateNotebook({
+      cells: nextCells.length > 0 ? nextCells : [createTextCell()],
+    });
+  }
+
+  function copyCell(cellId: string) {
+    updateNotebook({
+      cells: duplicateCell(activeNotebook.cells, cellId),
+    });
+  }
+
+  function moveCellEarlier(cellId: string) {
+    updateNotebook({
+      cells: moveCellUp(activeNotebook.cells, cellId),
+    });
+  }
+
+  function moveCellLater(cellId: string) {
+    updateNotebook({
+      cells: moveCellDown(activeNotebook.cells, cellId),
+    });
+  }
+
   const [notebooks, setNotebooks] = useState<Notebook[]>(() => {
     const notebook = createDefaultNotebook();
     return [notebook];
@@ -136,6 +179,12 @@ export default function NotebookApp() {
         onAddDrawingCell={addDrawingCell}
         onUpdateDrawingCell={updateDrawingCell}
         onUpdateCellHeight={updateCellHeight}
+        onAddDrawingCellAfter={addDrawingCellAfter}
+        onAddTextCellAfter={addTextCellAfter}
+        onRemoveCell={removeCell}
+        onCopyCell={copyCell}
+        onMoveCellUp={moveCellEarlier}
+        onMoveCellDown={moveCellLater}
       />
     </main>
   );

@@ -10,6 +10,12 @@ interface NotebookEditorProps {
   onUpdateTextCell: (cellId: string, content: string) => void;
   onUpdateDrawingCell: (cellId: string, drawing: string | null) => void;
   onUpdateCellHeight: (cellId: string, heightPx: number) => void;
+  onAddTextCellAfter: (cellId: string) => void;
+  onAddDrawingCellAfter: (cellId: string) => void;
+  onRemoveCell: (cellId: string) => void;
+  onCopyCell: (cellId: string) => void;
+  onMoveCellUp: (cellId: string) => void;
+  onMoveCellDown: (cellId: string) => void;
 }
 
 export default function NotebookEditor({
@@ -20,6 +26,12 @@ export default function NotebookEditor({
   onUpdateTextCell,
   onUpdateDrawingCell,
   onUpdateCellHeight,
+  onAddTextCellAfter,
+  onAddDrawingCellAfter,
+  onRemoveCell,
+  onCopyCell,
+  onMoveCellUp,
+  onMoveCellDown,
 }: NotebookEditorProps) {
   return (
     <section className="flex flex-1 flex-col">
@@ -52,6 +64,12 @@ export default function NotebookEditor({
         onUpdateTextCell={onUpdateTextCell}
         onUpdateDrawingCell={onUpdateDrawingCell}
         onUpdateCellHeight={onUpdateCellHeight}
+        onAddTextCellAfter={onAddTextCellAfter}
+        onAddDrawingCellAfter={onAddDrawingCellAfter}
+        onRemoveCell={onRemoveCell}
+        onCopyCell={onCopyCell}
+        onMoveCellUp={onMoveCellUp}
+        onMoveCellDown={onMoveCellDown}
       />
     </section>
   );

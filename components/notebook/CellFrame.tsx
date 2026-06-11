@@ -7,6 +7,12 @@ interface CellFrameProps {
   onUpdateTextCell: (cellId: string, content: string) => void;
   onUpdateDrawingCell: (cellId: string, drawing: string | null) => void;
   onUpdateCellHeight: (cellId: string, heightPx: number) => void;
+  onAddTextCellAfter: (cellId: string) => void;
+  onAddDrawingCellAfter: (cellId: string) => void;
+  onRemoveCell: (cellId: string) => void;
+  onCopyCell: (cellId: string) => void;
+  onMoveCellUp: (cellId: string) => void;
+  onMoveCellDown: (cellId: string) => void;
 }
 
 export default function CellFrame({
@@ -14,6 +20,12 @@ export default function CellFrame({
   onUpdateTextCell,
   onUpdateDrawingCell,
   onUpdateCellHeight,
+  onAddTextCellAfter,
+  onAddDrawingCellAfter,
+  onRemoveCell,
+  onCopyCell,
+  onMoveCellUp,
+  onMoveCellDown,
 }: CellFrameProps) {
   return (
     <article className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
@@ -41,29 +53,44 @@ export default function CellFrame({
           <div className="flex gap-1">
             <button
               type="button"
-              disabled
-              className="rounded border px-2 py-1 text-xs text-slate-400"
+              onClick={() => onAddTextCellAfter(cell.id)}
+              className="rounded border px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+            >
+              + Text
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onAddDrawingCellAfter(cell.id)}
+              className="rounded border px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+            >
+              + Drawing
+            </button>
+            <button
+              type="button"
+              onClick={() => onMoveCellUp(cell.id)}
+              className="rounded border px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
             >
               Up
             </button>
             <button
               type="button"
-              disabled
-              className="rounded border px-2 py-1 text-xs text-slate-400"
+              onClick={() => onMoveCellDown(cell.id)}
+              className="rounded border px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
             >
               Down
             </button>
             <button
               type="button"
-              disabled
-              className="rounded border px-2 py-1 text-xs text-slate-400"
+              onClick={() => onCopyCell(cell.id)}
+              className="rounded border px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
             >
               Copy
             </button>
             <button
               type="button"
-              disabled
-              className="rounded border px-2 py-1 text-xs text-slate-400"
+              onClick={() => onRemoveCell(cell.id)}
+              className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50"
             >
               Delete
             </button>
