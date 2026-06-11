@@ -17,6 +17,7 @@ import {
   insertCellAfter,
   moveCellDown,
   moveCellUp,
+  moveItem,
 } from "@/lib/utils";
 
 export default function NotebookApp() {
@@ -141,6 +142,12 @@ export default function NotebookApp() {
     });
   }
 
+  function reorderCells(fromIndex: number, toIndex: number) {
+    updateNotebook({
+      cells: moveItem(activeNotebook.cells, fromIndex, toIndex),
+    });
+  }
+
   const [notebooks, setNotebooks] = useState<Notebook[]>(() => {
     const notebook = createDefaultNotebook();
     return [notebook];
@@ -185,6 +192,7 @@ export default function NotebookApp() {
         onCopyCell={copyCell}
         onMoveCellUp={moveCellEarlier}
         onMoveCellDown={moveCellLater}
+        onReorderCells={reorderCells}
       />
     </main>
   );

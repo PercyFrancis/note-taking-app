@@ -16,6 +16,7 @@ interface NotebookEditorProps {
   onCopyCell: (cellId: string) => void;
   onMoveCellUp: (cellId: string) => void;
   onMoveCellDown: (cellId: string) => void;
+  onReorderCells: (fromIndex: number, toIndex: number) => void;
 }
 
 export default function NotebookEditor({
@@ -32,6 +33,7 @@ export default function NotebookEditor({
   onCopyCell,
   onMoveCellUp,
   onMoveCellDown,
+  onReorderCells,
 }: NotebookEditorProps) {
   return (
     <section className="flex flex-1 flex-col">
@@ -70,6 +72,7 @@ export default function NotebookEditor({
         onCopyCell={onCopyCell}
         onMoveCellUp={onMoveCellUp}
         onMoveCellDown={onMoveCellDown}
+        onReorderCells={onReorderCells}
       />
     </section>
   );

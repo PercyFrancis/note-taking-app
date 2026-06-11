@@ -1,9 +1,11 @@
+import { useSortable } from "@dnd-kit/react/sortable";
 import DrawingCellEditor from "@/components/notebook/DrawingCellEditor";
 import TextCellEditor from "@/components/notebook/TextCellEditor";
 import type { NotebookCell } from "@/lib/types";
 
 interface CellFrameProps {
   cell: NotebookCell;
+  index: number;
   onUpdateTextCell: (cellId: string, content: string) => void;
   onUpdateDrawingCell: (cellId: string, drawing: string | null) => void;
   onUpdateCellHeight: (cellId: string, heightPx: number) => void;
@@ -17,6 +19,7 @@ interface CellFrameProps {
 
 export default function CellFrame({
   cell,
+  index,
   onUpdateTextCell,
   onUpdateDrawingCell,
   onUpdateCellHeight,
@@ -27,10 +30,28 @@ export default function CellFrame({
   onMoveCellUp,
   onMoveCellDown,
 }: CellFrameProps) {
+  const { ref, handleRef, isDragging } = useSortable({
+    id: cell.id,
+    index,
+  });
   return (
-    <article className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
+    <article
+      ref={ref}
+      className={`mb-4 rounded-lg border border-slate-200 bg-white p-4 ${
+        isDragging ? "opacity-60 shadow-lg" : ""
+      }`}
+    >
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="text-xs font-medium uppercase text-slate-400">
+          <button
+            ref={handleRef}
+            type="button"
+            className="mr-2 cursor-grab rounded border border-slate-200 px-2 py-1 text-slate-500 active:cursor-grabbing"
+            aria-label="Drag cell"
+            title="Drag cell"
+          >
+            Drag
+          </button>
           {cell.type === "text" ? "Text cell" : "Drawing cell"}
         </div>
         <div className="flex flex-wrap items-center gap-3">
