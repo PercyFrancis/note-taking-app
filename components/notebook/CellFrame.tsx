@@ -6,6 +6,7 @@ import type { NotebookCell } from "@/lib/types";
 interface CellFrameProps {
   cell: NotebookCell;
   index: number;
+  focusedCellId: string | null;
   onUpdateTextCell: (cellId: string, content: string) => void;
   onUpdateDrawingCell: (cellId: string, drawing: string | null) => void;
   onUpdateCellHeight: (cellId: string, heightPx: number) => void;
@@ -15,11 +16,13 @@ interface CellFrameProps {
   onCopyCell: (cellId: string) => void;
   onMoveCellUp: (cellId: string) => void;
   onMoveCellDown: (cellId: string) => void;
+  onFocusedCellHandled: () => void;
 }
 
 export default function CellFrame({
   cell,
   index,
+  focusedCellId,
   onUpdateTextCell,
   onUpdateDrawingCell,
   onUpdateCellHeight,
@@ -29,14 +32,55 @@ export default function CellFrame({
   onCopyCell,
   onMoveCellUp,
   onMoveCellDown,
+  onFocusedCellHandled,
 }: CellFrameProps) {
   const { ref, handleRef, isDragging } = useSortable({
     id: cell.id,
     index,
   });
+  function isEditableTarget(target: EventTarget | null): boolean {
+    if (!(target instanceof HTMLElement)) return false;
+
+    return (
+      target.tagName === "TEXTAREA" ||
+      target.tagName === "INPUT" ||
+      target.isContentEditable
+    );
+  }
+
+  function handleKeyDown(event: React.KeyboardEvent<HTMLElement>) {
+    const isModifierPressed = event.ctrlKey || event.metaKey;
+
+    if (!isModifierPressed) return;
+
+    const isTypingInEditableElement = isEditableTarget(event.target);
+
+    if (event.key === "Enter") {
+      event.preventDefault();
+      onAddTextCellAfter(cell.id);
+      return;
+    }
+
+    if (event.shiftKey && event.key.toLowerCase() === "d") {
+      event.preventDefault();
+      onAddDrawingCellAfter(cell.id);
+      return;
+    }
+
+    if (event.key === "Backspace" && !isTypingInEditableElement) {
+      event.preventDefault();
+
+      const shouldDelete = window.confirm("Delete this cell?");
+      if (shouldDelete) {
+        onRemoveCell(cell.id);
+      }
+    }
+  }
+
   return (
     <article
       ref={ref}
+      onKeyDown={handleKeyDown}
       className={`mb-4 rounded-lg border border-slate-200 bg-white p-4 ${
         isDragging ? "opacity-60 shadow-lg" : ""
       }`}
@@ -123,6 +167,8 @@ export default function CellFrame({
         <TextCellEditor
           cell={cell}
           onChange={(content) => onUpdateTextCell(cell.id, content)}
+          shouldFocus={focusedCellId === cell.id}
+          onFocusHandled={onFocusedCellHandled}
         />
       ) : (
         <DrawingCellEditor

@@ -1,21 +1,35 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import type { TextCell } from "@/lib/types";
 import { countWords } from "@/lib/utils";
 
 interface TextCellEditorProps {
   cell: TextCell;
+  shouldFocus: boolean;
   onChange: (content: string) => void;
+  onFocusHandled: () => void;
 }
 
 export default function TextCellEditor({
   cell,
+  shouldFocus,
   onChange,
+  onFocusHandled,
 }: TextCellEditorProps) {
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  useEffect(() => {
+    if (!shouldFocus) return;
+
+    textareaRef.current?.focus();
+    onFocusHandled();
+  }, [shouldFocus, onFocusHandled]);
+
   return (
     <div>
       <textarea
         value={cell.content}
+        ref={textareaRef}
         onChange={(event) => onChange(event.target.value)}
         placeholder="Write something..."
         style={{ height: cell.heightPx }}

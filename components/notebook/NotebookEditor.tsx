@@ -4,6 +4,7 @@ import type { Notebook, NotebookUpdate } from "@/lib/types";
 
 interface NotebookEditorProps {
   notebook: Notebook;
+  focusedCellId: string | null;
   onUpdateNotebook: (fields: NotebookUpdate) => void;
   onAddTextCell: () => void;
   onAddDrawingCell: () => void;
@@ -17,10 +18,12 @@ interface NotebookEditorProps {
   onMoveCellUp: (cellId: string) => void;
   onMoveCellDown: (cellId: string) => void;
   onReorderCells: (fromIndex: number, toIndex: number) => void;
+  onFocusedCellHandled: () => void;
 }
 
 export default function NotebookEditor({
   notebook,
+  focusedCellId,
   onUpdateNotebook,
   onAddTextCell,
   onAddDrawingCell,
@@ -34,6 +37,7 @@ export default function NotebookEditor({
   onMoveCellUp,
   onMoveCellDown,
   onReorderCells,
+  onFocusedCellHandled,
 }: NotebookEditorProps) {
   return (
     <section className="flex flex-1 flex-col">
@@ -63,6 +67,7 @@ export default function NotebookEditor({
       </header>
       <CellList
         cells={notebook.cells}
+        focusedCellId={focusedCellId}
         onUpdateTextCell={onUpdateTextCell}
         onUpdateDrawingCell={onUpdateDrawingCell}
         onUpdateCellHeight={onUpdateCellHeight}
@@ -73,6 +78,7 @@ export default function NotebookEditor({
         onMoveCellUp={onMoveCellUp}
         onMoveCellDown={onMoveCellDown}
         onReorderCells={onReorderCells}
+        onFocusedCellHandled={onFocusedCellHandled}
       />
     </section>
   );

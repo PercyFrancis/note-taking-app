@@ -5,6 +5,7 @@ import type { NotebookCell } from "@/lib/types";
 
 interface CellListProps {
   cells: NotebookCell[];
+  focusedCellId: string | null;
   onUpdateTextCell: (cellId: string, content: string) => void;
   onUpdateDrawingCell: (cellId: string, drawing: string | null) => void;
   onUpdateCellHeight: (cellId: string, heightPx: number) => void;
@@ -15,10 +16,12 @@ interface CellListProps {
   onMoveCellUp: (cellId: string) => void;
   onMoveCellDown: (cellId: string) => void;
   onReorderCells: (fromIndex: number, toIndex: number) => void;
+  onFocusedCellHandled: () => void;
 }
 
 export default function CellList({
   cells,
+  focusedCellId,
   onUpdateTextCell,
   onUpdateDrawingCell,
   onUpdateCellHeight,
@@ -29,6 +32,7 @@ export default function CellList({
   onMoveCellUp,
   onMoveCellDown,
   onReorderCells,
+  onFocusedCellHandled,
 }: CellListProps) {
   return (
     <DragDropProvider
@@ -52,6 +56,7 @@ export default function CellList({
             key={cell.id}
             cell={cell}
             index={index}
+            focusedCellId={focusedCellId}
             onUpdateTextCell={onUpdateTextCell}
             onUpdateDrawingCell={onUpdateDrawingCell}
             onUpdateCellHeight={onUpdateCellHeight}
@@ -61,6 +66,7 @@ export default function CellList({
             onCopyCell={onCopyCell}
             onMoveCellUp={onMoveCellUp}
             onMoveCellDown={onMoveCellDown}
+            onFocusedCellHandled={onFocusedCellHandled}
           />
         ))}
       </div>

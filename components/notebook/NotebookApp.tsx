@@ -65,9 +65,13 @@ export default function NotebookApp() {
   }
 
   function addTextCell() {
+    const newCell = createTextCell();
+
     updateNotebook({
-      cells: [...activeNotebook.cells, createTextCell()],
+      cells: [...activeNotebook.cells, newCell],
     });
+
+    setFocusedCellId(newCell.id);
   }
 
   function addDrawingCell() {
@@ -105,9 +109,13 @@ export default function NotebookApp() {
   }
 
   function addTextCellAfter(cellId: string) {
+    const newCell = createTextCell();
+
     updateNotebook({
-      cells: insertCellAfter(activeNotebook.cells, cellId, createTextCell()),
+      cells: insertCellAfter(activeNotebook.cells, cellId, newCell),
     });
+
+    setFocusedCellId(newCell.id);
   }
 
   function addDrawingCellAfter(cellId: string) {
@@ -166,6 +174,8 @@ export default function NotebookApp() {
     notebook.title.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
+  const [focusedCellId, setFocusedCellId] = useState<string | null>(null);
+
   return (
     <main className="flex min-h-screen bg-slate-100 text-slate-950">
       <NotebookSidebar
@@ -180,6 +190,7 @@ export default function NotebookApp() {
 
       <NotebookEditor
         notebook={activeNotebook}
+        focusedCellId={focusedCellId}
         onUpdateNotebook={updateNotebook}
         onAddTextCell={addTextCell}
         onUpdateTextCell={updateTextCell}
@@ -193,6 +204,7 @@ export default function NotebookApp() {
         onMoveCellUp={moveCellEarlier}
         onMoveCellDown={moveCellLater}
         onReorderCells={reorderCells}
+        onFocusedCellHandled={() => setFocusedCellId(null)}
       />
     </main>
   );
