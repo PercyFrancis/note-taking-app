@@ -3,23 +3,30 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-  "dev": "next dev",
-  "build": "next build",
-  "start": "next start",
-  "lint": "biome lint app components lib",
-  "lint:fix": "biome lint --write app components lib",
-  "format": "biome format --write app components lib",
-  "check": "biome check app components lib",
-  "check:fix": "biome check --write app components lib"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "biome lint app components lib",
+    "lint:fix": "biome lint --write app components lib",
+    "format": "biome format --write app components lib",
+    "check": "biome check app components lib",
+    "check:fix": "biome check --write app components lib"
   },
   "dependencies": {
+    "@dnd-kit/react": "^0.4.0",
+    "katex": "^0.17.0",
     "next": "16.2.6",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "react-markdown": "^10.1.0",
+    "rehype-katex": "^7.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.16",
     "@tailwindcss/postcss": "^4",
+    "@tailwindcss/typography": "^0.5.20",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

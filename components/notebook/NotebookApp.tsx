@@ -12,6 +12,13 @@ import {
   createDefaultNotebook,
   createDrawingCell,
   createTextCell,
+  deleteCell,
+  duplicateCell,
+  insertCellAfter,
+  moveCellDown,
+  moveCellUp,
+  moveItem,
+  notebookMatchesSearch,
 } from "@/lib/utils";
 
 export default function NotebookApp() {
@@ -59,9 +66,13 @@ export default function NotebookApp() {
   }
 
   function addTextCell() {
+    const newCell = createTextCell();
+
     updateNotebook({
-      cells: [...activeNotebook.cells, createTextCell()],
+      cells: [...activeNotebook.cells, newCell],
     });
+
+    setFocusedCellId(newCell.id);
   }
 
   function addDrawingCell() {
@@ -98,6 +109,54 @@ export default function NotebookApp() {
     });
   }
 
+  function addTextCellAfter(cellId: string) {
+    const newCell = createTextCell();
+
+    updateNotebook({
+      cells: insertCellAfter(activeNotebook.cells, cellId, newCell),
+    });
+
+    setFocusedCellId(newCell.id);
+  }
+
+  function addDrawingCellAfter(cellId: string) {
+    updateNotebook({
+      cells: insertCellAfter(activeNotebook.cells, cellId, createDrawingCell()),
+    });
+  }
+
+  function removeCell(cellId: string) {
+    const nextCells = deleteCell(activeNotebook.cells, cellId);
+
+    updateNotebook({
+      cells: nextCells.length > 0 ? nextCells : [createTextCell()],
+    });
+  }
+
+  function copyCell(cellId: string) {
+    updateNotebook({
+      cells: duplicateCell(activeNotebook.cells, cellId),
+    });
+  }
+
+  function moveCellEarlier(cellId: string) {
+    updateNotebook({
+      cells: moveCellUp(activeNotebook.cells, cellId),
+    });
+  }
+
+  function moveCellLater(cellId: string) {
+    updateNotebook({
+      cells: moveCellDown(activeNotebook.cells, cellId),
+    });
+  }
+
+  function reorderCells(fromIndex: number, toIndex: number) {
+    updateNotebook({
+      cells: moveItem(activeNotebook.cells, fromIndex, toIndex),
+    });
+  }
+
   const [notebooks, setNotebooks] = useState<Notebook[]>(() => {
     const notebook = createDefaultNotebook();
     return [notebook];
@@ -113,11 +172,12 @@ export default function NotebookApp() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const filteredNotebooks = notebooks.filter((notebook) =>
-    notebook.title.toLowerCase().includes(searchQuery.toLowerCase()),
+    notebookMatchesSearch(notebook, searchQuery),
   );
+  const [focusedCellId, setFocusedCellId] = useState<string | null>(null);
 
   return (
-    <main className="flex min-h-screen bg-slate-100 text-slate-950">
+    <main className="flex min-h-screen flex-col bg-slate-100 text-slate-950 md:flex-row">
       <NotebookSidebar
         notebooks={filteredNotebooks}
         activeNotebookId={activeNotebookId}
@@ -130,12 +190,21 @@ export default function NotebookApp() {
 
       <NotebookEditor
         notebook={activeNotebook}
+        focusedCellId={focusedCellId}
         onUpdateNotebook={updateNotebook}
         onAddTextCell={addTextCell}
         onUpdateTextCell={updateTextCell}
         onAddDrawingCell={addDrawingCell}
         onUpdateDrawingCell={updateDrawingCell}
         onUpdateCellHeight={updateCellHeight}
+        onAddDrawingCellAfter={addDrawingCellAfter}
+        onAddTextCellAfter={addTextCellAfter}
+        onRemoveCell={removeCell}
+        onCopyCell={copyCell}
+        onMoveCellUp={moveCellEarlier}
+        onMoveCellDown={moveCellLater}
+        onReorderCells={reorderCells}
+        onFocusedCellHandled={() => setFocusedCellId(null)}
       />
     </main>
   );

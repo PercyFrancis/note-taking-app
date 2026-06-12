@@ -109,3 +109,157 @@ export function applyCellHeightUpdate(
     updatedAt: Date.now(),
   };
 }
+export function insertCellAfter(
+  cells: NotebookCell[],
+  targetCellId: string,
+  newCell: NotebookCell,
+): NotebookCell[] {
+  const targetIndex = cells.findIndex((cell) => cell.id === targetCellId);
+
+  if (targetIndex === -1) {
+    return [...cells, newCell];
+  }
+
+  return [
+    ...cells.slice(0, targetIndex + 1),
+    newCell,
+    ...cells.slice(targetIndex + 1),
+  ];
+}
+export function deleteCell(
+  cells: NotebookCell[],
+  cellId: string,
+): NotebookCell[] {
+  return cells.filter((cell) => cell.id !== cellId);
+}
+export function duplicateCell(
+  cells: NotebookCell[],
+  cellId: string,
+): NotebookCell[] {
+  const targetCell = cells.find((cell) => cell.id === cellId);
+
+  if (!targetCell) {
+    return cells;
+  }
+  const now = Date.now();
+
+  const copiedCell: NotebookCell = {
+    ...targetCell,
+    id: createId(),
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  return insertCellAfter(cells, cellId, copiedCell);
+}
+
+export function moveItem<T>(
+  items: T[],
+  fromIndex: number,
+  toIndex: number,
+): T[] {
+  if (
+    fromIndex < 0 ||
+    toIndex < 0 ||
+    fromIndex >= items.length ||
+    toIndex >= items.length
+  ) {
+    return items;
+  }
+
+  const nextItems = [...items];
+  const [movedItem] = nextItems.splice(fromIndex, 1);
+  nextItems.splice(toIndex, 0, movedItem);
+
+  return nextItems;
+}
+export function moveCellUp(
+  cells: NotebookCell[],
+  cellId: string,
+): NotebookCell[] {
+  const index = cells.findIndex((cell) => cell.id === cellId);
+  return moveItem(cells, index, index - 1);
+}
+
+export function moveCellDown(
+  cells: NotebookCell[],
+  cellId: string,
+): NotebookCell[] {
+  const index = cells.findIndex((cell) => cell.id === cellId);
+  return moveItem(cells, index, index + 1);
+}
+
+export function normalizeSearchText(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+export function notebookMatchesSearch(
+  notebook: Notebook,
+  query: string,
+): boolean {
+  const normalizedQuery = normalizeSearchText(query);
+
+  if (normalizedQuery === "") {
+    return true;
+  }
+
+  const titleMatches = normalizeSearchText(notebook.title).includes(
+    normalizedQuery,
+  );
+
+  const textCellMatches = notebook.cells.some((cell) => {
+    if (cell.type !== "text") {
+      return false;
+    }
+
+    return normalizeSearchText(cell.content).includes(normalizedQuery);
+  });
+
+  return titleMatches || textCellMatches;
+}
+
+export function findFirstMatchingTextCell(
+  notebook: Notebook,
+  query: string,
+): TextCell | null {
+  const normalizedQuery = normalizeSearchText(query);
+
+  if (normalizedQuery === "") {
+    return null;
+  }
+
+  for (const cell of notebook.cells) {
+    if (cell.type !== "text") {
+      continue;
+    }
+
+    if (normalizeSearchText(cell.content).includes(normalizedQuery)) {
+      return cell;
+    }
+  }
+
+  return null;
+}
+
+export function getNotebookSearchPreview(
+  notebook: Notebook,
+  query: string,
+): string | null {
+  const matchingCell = findFirstMatchingTextCell(notebook, query);
+
+  if (!matchingCell) {
+    return null;
+  }
+
+  return createSearchPreview(matchingCell.content);
+}
+
+export function createSearchPreview(text: string, maxLength = 80): string {
+  const singleLineText = text.trim().replace(/\s+/g, " ");
+
+  if (singleLineText.length <= maxLength) {
+    return singleLineText;
+  }
+
+  return `${singleLineText.slice(0, maxLength)}...`;
+}
