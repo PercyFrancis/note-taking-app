@@ -177,7 +177,7 @@ export default function NotebookApp() {
   const [focusedCellId, setFocusedCellId] = useState<string | null>(null);
 
   return (
-    <main className="flex min-h-screen bg-slate-100 text-slate-950">
+    <main className="flex min-h-screen flex-col bg-slate-100 text-slate-950 md:flex-row">
       <NotebookSidebar
         notebooks={filteredNotebooks}
         activeNotebookId={activeNotebookId}

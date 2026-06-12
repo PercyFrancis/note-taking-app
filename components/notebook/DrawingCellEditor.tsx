@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { DrawingCell } from "@/lib/types";
+import { smallDangerButtonClass } from "../ui/buttonStyles";
 
 interface DrawingCellEditorProps {
   cell: DrawingCell;
@@ -180,8 +181,8 @@ export default function DrawingCellEditor({
           aria-pressed={tool === "pen"}
           className={`rounded-md border px-3 py-1.5 text-sm font-medium transition ${
             tool === "pen"
-              ? "border-slate-900 bg-slate-900 text-white"
-              : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+              ? "border-slate-900 bg-slate-900 text-white outline-none focus-visible:border-slate-400 focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
+              : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100 outline-none focus-visible:border-slate-400 focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
           }`}
         >
           Pen
@@ -193,8 +194,8 @@ export default function DrawingCellEditor({
           aria-pressed={tool === "eraser"}
           className={`rounded-md border px-3 py-1.5 text-sm font-medium transition ${
             tool === "eraser"
-              ? "border-slate-900 bg-slate-900 text-white"
-              : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+              ? "border-slate-900 bg-slate-900 text-white outline-none focus-visible:border-slate-400 focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
+              : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100 outline-none focus-visible:border-slate-400 focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
           }`}
         >
           Eraser
@@ -210,7 +211,7 @@ export default function DrawingCellEditor({
               }}
               aria-label={`Use ${option.name}`}
               title={option.name}
-              className={`h-7 w-7 rounded-full border transition ${
+              className={`h-7 w-7 rounded-full border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2 ${
                 color === option.value && tool === "pen"
                   ? "border-white ring-2 ring-slate-900 ring-offset-2"
                   : "border-slate-300 hover:scale-105"
@@ -229,7 +230,7 @@ export default function DrawingCellEditor({
               setColor(event.target.value);
               setTool("pen");
             }}
-            className="h-8 w-10 cursor-pointer rounded border border-slate-200 bg-white p-0.5"
+            className="h-8 w-10 cursor-pointer rounded border border-slate-200 bg-white p-0.5 outline-none focus-visible:border-slate-400 focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
           />
         </label>
 
@@ -241,7 +242,7 @@ export default function DrawingCellEditor({
             max={24}
             value={brushSize}
             onChange={(event) => setBrushSize(Number(event.target.value))}
-            className="w-28 accent-slate-900"
+            className="w-28 accent-slate-900 outline-none focus-visible:border-slate-400 focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
           />
           <span className="w-6 text-right text-slate-400">{brushSize}</span>
         </label>
@@ -249,7 +250,7 @@ export default function DrawingCellEditor({
         <button
           type="button"
           onClick={clearDrawing}
-          className="rounded-md border border-red-200 bg-white px-3 py-1.5 text-sm font-medium text-red-600 transition hover:bg-red-50"
+          className={smallDangerButtonClass}
         >
           Clear
         </button>

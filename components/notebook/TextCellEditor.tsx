@@ -71,12 +71,13 @@ export default function TextCellEditor({
           onChange={(event) => onChange(event.target.value)}
           placeholder="Write something..."
           style={{ height: cell.heightPx }}
-          className="w-full resize-none rounded-md border border-slate-200 p-3 text-sm leading-6 text-slate-800 outline-none focus:border-slate-400"
+          className="box-border block overflow-auto w-full resize-none rounded-md border border-slate-200 p-3 text-sm leading-6 text-slate-800 
+          outline-none focus-visible:border-slate-400 focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
         />
       ) : (
         <div
-          style={{ minHeight: cell.heightPx }}
-          className="overflow-auto rounded-md border border-slate-200 bg-white p-3"
+          style={{ height: cell.heightPx }}
+          className="box-border break-words [overflow-wrap:anywhere] block min-w-0 overflow-auto rounded-md border border-slate-200 bg-white p-3"
         >
           <div
             className="

@@ -50,7 +50,7 @@ export default function CellList({
         onReorderCells(initialIndex, index);
       }}
     >
-      <div className="flex-1 overflow-y-auto px-8 py-6">
+      <div className="flex-1 overflow-y-auto px-4 py-4 md:px-8 md:py-6">
         {cells.map((cell, index) => (
           <CellFrame
             key={cell.id}
