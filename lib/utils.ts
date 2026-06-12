@@ -188,3 +188,78 @@ export function moveCellDown(
   const index = cells.findIndex((cell) => cell.id === cellId);
   return moveItem(cells, index, index + 1);
 }
+
+export function normalizeSearchText(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+export function notebookMatchesSearch(
+  notebook: Notebook,
+  query: string,
+): boolean {
+  const normalizedQuery = normalizeSearchText(query);
+
+  if (normalizedQuery === "") {
+    return true;
+  }
+
+  const titleMatches = normalizeSearchText(notebook.title).includes(
+    normalizedQuery,
+  );
+
+  const textCellMatches = notebook.cells.some((cell) => {
+    if (cell.type !== "text") {
+      return false;
+    }
+
+    return normalizeSearchText(cell.content).includes(normalizedQuery);
+  });
+
+  return titleMatches || textCellMatches;
+}
+
+export function findFirstMatchingTextCell(
+  notebook: Notebook,
+  query: string,
+): TextCell | null {
+  const normalizedQuery = normalizeSearchText(query);
+
+  if (normalizedQuery === "") {
+    return null;
+  }
+
+  for (const cell of notebook.cells) {
+    if (cell.type !== "text") {
+      continue;
+    }
+
+    if (normalizeSearchText(cell.content).includes(normalizedQuery)) {
+      return cell;
+    }
+  }
+
+  return null;
+}
+
+export function getNotebookSearchPreview(
+  notebook: Notebook,
+  query: string,
+): string | null {
+  const matchingCell = findFirstMatchingTextCell(notebook, query);
+
+  if (!matchingCell) {
+    return null;
+  }
+
+  return createSearchPreview(matchingCell.content);
+}
+
+export function createSearchPreview(text: string, maxLength = 80): string {
+  const singleLineText = text.trim().replace(/\s+/g, " ");
+
+  if (singleLineText.length <= maxLength) {
+    return singleLineText;
+  }
+
+  return `${singleLineText.slice(0, maxLength)}...`;
+}

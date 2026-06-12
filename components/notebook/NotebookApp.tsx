@@ -18,6 +18,7 @@ import {
   moveCellDown,
   moveCellUp,
   moveItem,
+  notebookMatchesSearch,
 } from "@/lib/utils";
 
 export default function NotebookApp() {
@@ -171,9 +172,8 @@ export default function NotebookApp() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const filteredNotebooks = notebooks.filter((notebook) =>
-    notebook.title.toLowerCase().includes(searchQuery.toLowerCase()),
+    notebookMatchesSearch(notebook, searchQuery),
   );
-
   const [focusedCellId, setFocusedCellId] = useState<string | null>(null);
 
   return (
