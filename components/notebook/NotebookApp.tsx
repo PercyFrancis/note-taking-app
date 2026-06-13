@@ -1,8 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import NotebookEditor from "@/components/notebook/NotebookEditor";
 import NotebookSidebar from "@/components/notebook/NotebookSidebar";
+import {
+  loadStoredNotebooks,
+  saveStoredNotebooks,
+} from "@/lib/notebook-storage";
 import type { Notebook, NotebookUpdate } from "@/lib/types";
 import {
   applyCellHeightUpdate,
@@ -176,6 +180,27 @@ export default function NotebookApp() {
   );
   const [focusedCellId, setFocusedCellId] = useState<string | null>(null);
 
+  const [hasLoadedStoredNotebooks, setHasLoadedStoredNotebooks] =
+    useState(false);
+
+  useEffect(() => {
+    const storedNotebooks = loadStoredNotebooks();
+
+    if (storedNotebooks && storedNotebooks.length > 0) {
+      setNotebooks(storedNotebooks);
+      setActiveNotebookId(storedNotebooks[0].id);
+    }
+
+    setHasLoadedStoredNotebooks(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hasLoadedStoredNotebooks) {
+      return;
+    }
+
+    saveStoredNotebooks(notebooks);
+  }, [notebooks, hasLoadedStoredNotebooks]);
   return (
     <main className="flex min-h-screen flex-col bg-slate-100 text-slate-950 md:flex-row">
       <NotebookSidebar
