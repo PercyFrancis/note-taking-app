@@ -3,6 +3,10 @@
 import { useEffect, useState } from "react";
 import NotebookEditor from "@/components/notebook/NotebookEditor";
 import NotebookSidebar from "@/components/notebook/NotebookSidebar";
+import {
+  loadStoredNotebooks,
+  saveStoredNotebooks,
+} from "@/lib/notebook-storage";
 import type { Notebook, NotebookUpdate } from "@/lib/types";
 import {
   applyCellHeightUpdate,
@@ -20,10 +24,6 @@ import {
   moveItem,
   notebookMatchesSearch,
 } from "@/lib/utils";
-import { 
-  loadStoredNotebooks,
-  saveStoredNotebooks,
- } from "@/lib/notebook-storage";
 
 export default function NotebookApp() {
   function createNotebook() {

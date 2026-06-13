@@ -1,13 +1,11 @@
-import { Notebook } from "./types";
+import type { Notebook } from "./types";
 
 const STORAGE_KEY = "note-taking-app:notebooks";
-
 
 interface StoredNotebooks {
   version: 1;
   notebooks: Notebook[];
 }
-
 
 export function loadStoredNotebooks(): Notebook[] | null {
   if (typeof window === "undefined") {
@@ -33,7 +31,6 @@ export function loadStoredNotebooks(): Notebook[] | null {
   }
 }
 
-
 export function saveStoredNotebooks(notebooks: Notebook[]): void {
   if (typeof window === "undefined") {
     return;
@@ -45,10 +42,7 @@ export function saveStoredNotebooks(notebooks: Notebook[]): void {
   };
 
   try {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify(storedNotebooks),
-    );
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(storedNotebooks));
   } catch {
     // Ignore storage failures for now.
   }
