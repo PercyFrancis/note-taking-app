@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import NotebookEditor from "@/components/notebook/NotebookEditor";
 import NotebookSidebar from "@/components/notebook/NotebookSidebar";
 import {
+  createNotebookExport,
   loadStoredNotebooks,
+  parseNotebookExport,
   saveStoredNotebooks,
 } from "@/lib/notebook-storage";
 import type { Notebook, NotebookUpdate } from "@/lib/types";
@@ -170,6 +172,41 @@ export default function NotebookApp() {
     return notebooks[0].id;
   });
 
+  function exportNotebooks() {
+    const exportData = createNotebookExport(notebooks);
+    const json = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `notebooks-${Date.now()}.json`;
+    link.click();
+
+    URL.revokeObjectURL(url);
+  }
+
+  async function importNotebooks(file: File) {
+    const fileText = await file.text();
+    const importedNotebooks = parseNotebookExport(fileText);
+
+    if (!importedNotebooks) {
+      window.alert("This file is not a valid notebook export.");
+      return;
+    }
+
+    const shouldImport = window.confirm(
+      "Importing will replace your current notebooks. Continue?",
+    );
+
+    if (!shouldImport) {
+      return;
+    }
+
+    setNotebooks(importedNotebooks);
+    setActiveNotebookId(importedNotebooks[0].id);
+  }
+
   const activeNotebook =
     notebooks.find((notebook) => notebook.id === activeNotebookId) ??
     notebooks[0];
@@ -230,6 +267,8 @@ export default function NotebookApp() {
         onMoveCellDown={moveCellLater}
         onReorderCells={reorderCells}
         onFocusedCellHandled={() => setFocusedCellId(null)}
+        onExportNotebooks={exportNotebooks}
+        onImportNotebooks={importNotebooks}
       />
     </main>
   );
