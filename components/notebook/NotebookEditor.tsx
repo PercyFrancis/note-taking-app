@@ -1,6 +1,6 @@
 "use client";
 import CellList from "@/components/notebook/CellList";
-import { primaryButtonClass } from "@/components/ui/buttonStyles";
+import NotebookToolbar from "@/components/notebook/NotebookToolbar";
 import type { Notebook, NotebookUpdate } from "@/lib/types";
 
 interface NotebookEditorProps {
@@ -20,6 +20,8 @@ interface NotebookEditorProps {
   onMoveCellDown: (cellId: string) => void;
   onReorderCells: (fromIndex: number, toIndex: number) => void;
   onFocusedCellHandled: () => void;
+  onExportNotebooks: () => void;
+  onImportNotebooks: (file: File) => void;
 }
 
 export default function NotebookEditor({
@@ -39,6 +41,8 @@ export default function NotebookEditor({
   onMoveCellDown,
   onReorderCells,
   onFocusedCellHandled,
+  onExportNotebooks,
+  onImportNotebooks,
 }: NotebookEditorProps) {
   return (
     <section className="flex min-w-0 flex-1 flex-col">
@@ -54,23 +58,12 @@ export default function NotebookEditor({
             className="min-w-0 flex-1 rounded-md bg-transparent px-1 text-2xl font-semibold text-slate-950 outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
           />
 
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={onAddTextCell}
-              className={primaryButtonClass}
-            >
-              Add text cell
-            </button>
-
-            <button
-              type="button"
-              onClick={onAddDrawingCell}
-              className={primaryButtonClass}
-            >
-              Add drawing cell
-            </button>
-          </div>
+          <NotebookToolbar
+            onAddTextCell={onAddTextCell}
+            onAddDrawingCell={onAddDrawingCell}
+            onExportNotebooks={onExportNotebooks}
+            onImportNotebooks={onImportNotebooks}
+          />
         </div>
       </header>
       <CellList

@@ -29,3 +29,9 @@ export interface Notebook {
 }
 
 export type NotebookUpdate = Partial<Pick<Notebook, "title" | "cells">>;
+
+export interface NotebookExport {
+  version: 1;
+  notebooks: Notebook[];
+  exportedAt: number;
+}
