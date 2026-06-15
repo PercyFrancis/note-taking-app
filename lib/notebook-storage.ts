@@ -1,17 +1,7 @@
-import type {
-  DrawingCell,
-  Notebook,
-  NotebookCell,
-  NotebookExport,
-  TextCell,
-} from "./types";
+import { isNotebookExport, isStoredNotebooks } from "./notebook-validation";
+import type { Notebook, NotebookExport, StoredNotebooks } from "./types";
 
 const STORAGE_KEY = "note-taking-app:notebooks";
-
-interface StoredNotebooks {
-  version: 1;
-  notebooks: Notebook[];
-}
 
 export function loadStoredNotebooks(): Notebook[] | null {
   if (typeof window === "undefined") {
@@ -54,84 +44,12 @@ export function saveStoredNotebooks(notebooks: Notebook[]): void {
   }
 }
 
-function isStoredNotebooks(value: unknown): value is StoredNotebooks {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  return (
-    value.version === 1 &&
-    Array.isArray(value.notebooks) &&
-    value.notebooks.length > 0 &&
-    value.notebooks.every(isNotebook)
-  );
-}
-
 export function createNotebookExport(notebooks: Notebook[]): NotebookExport {
   return {
     version: 1,
     notebooks,
     exportedAt: Date.now(),
   };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function isTextCell(value: unknown): value is TextCell {
-  if (!isRecord(value)) return false;
-
-  return (
-    value.type === "text" &&
-    typeof value.id === "string" &&
-    typeof value.content === "string" &&
-    typeof value.heightPx === "number" &&
-    typeof value.createdAt === "number" &&
-    typeof value.updatedAt === "number"
-  );
-}
-
-function isDrawingCell(value: unknown): value is DrawingCell {
-  if (!isRecord(value)) return false;
-
-  return (
-    value.type === "drawing" &&
-    typeof value.id === "string" &&
-    (typeof value.drawing === "string" || value.drawing === null) &&
-    typeof value.heightPx === "number" &&
-    typeof value.createdAt === "number" &&
-    typeof value.updatedAt === "number"
-  );
-}
-
-function isNotebookCell(value: unknown): value is NotebookCell {
-  return isTextCell(value) || isDrawingCell(value);
-}
-
-function isNotebook(value: unknown): value is Notebook {
-  if (!isRecord(value)) return false;
-
-  return (
-    typeof value.id === "string" &&
-    typeof value.title === "string" &&
-    Array.isArray(value.cells) &&
-    value.cells.every(isNotebookCell) &&
-    typeof value.createdAt === "number" &&
-    typeof value.updatedAt === "number"
-  );
-}
-
-function isNotebookExport(value: unknown): value is NotebookExport {
-  if (!isRecord(value)) return false;
-
-  return (
-    value.version === 1 &&
-    Array.isArray(value.notebooks) &&
-    value.notebooks.length > 0 &&
-    value.notebooks.every(isNotebook) &&
-    typeof value.exportedAt === "number"
-  );
 }
 
 export function parseNotebookExport(fileText: string): Notebook[] | null {

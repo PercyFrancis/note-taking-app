@@ -35,3 +35,19 @@ export interface NotebookExport {
   notebooks: Notebook[];
   exportedAt: number;
 }
+export interface StoredNotebooks {
+  version: 1;
+  notebooks: Notebook[];
+}
+
+export interface CreateNotebookInput {
+  title: string;
+}
+
+export interface NotebooksResponse {
+  notebooks: Notebook[];
+}
+
+export interface NotebookResponse {
+  notebook: Notebook;
+}

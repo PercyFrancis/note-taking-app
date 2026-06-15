@@ -187,24 +187,28 @@ export default function NotebookApp() {
   }
 
   async function importNotebooks(file: File) {
-    const fileText = await file.text();
-    const importedNotebooks = parseNotebookExport(fileText);
+    try {
+      const fileText = await file.text();
+      const importedNotebooks = parseNotebookExport(fileText);
 
-    if (!importedNotebooks) {
-      window.alert("This file is not a valid notebook export.");
-      return;
+      if (!importedNotebooks) {
+        window.alert("This file is not a valid notebook export.");
+        return;
+      }
+
+      const shouldImport = window.confirm(
+        "Importing will replace your current notebooks. Continue?",
+      );
+
+      if (!shouldImport) {
+        return;
+      }
+
+      setNotebooks(importedNotebooks);
+      setActiveNotebookId(importedNotebooks[0].id);
+    } catch {
+      window.alert("The selected file could not be read.");
     }
-
-    const shouldImport = window.confirm(
-      "Importing will replace your current notebooks. Continue?",
-    );
-
-    if (!shouldImport) {
-      return;
-    }
-
-    setNotebooks(importedNotebooks);
-    setActiveNotebookId(importedNotebooks[0].id);
   }
 
   const activeNotebook =
