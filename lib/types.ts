@@ -51,3 +51,22 @@ export interface NotebooksResponse {
 export interface NotebookResponse {
   notebook: Notebook;
 }
+
+export interface NotebookRow {
+  id: string;
+  title: string;
+  created_at: Date | string;
+  updated_at: Date | string;
+}
+
+export interface CellRow {
+  id: string;
+  notebook_id: string;
+  type: "text" | "drawing";
+  position: number;
+  content: string | null;
+  drawing: string | null;
+  height_px: number;
+  created_at: Date | string;
+  updated_at: Date | string;
+}

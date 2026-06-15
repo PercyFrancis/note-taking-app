@@ -1,8 +1,10 @@
 import { isCreateNotebookInput } from "@/lib/notebook-validation";
+import { getCurrentUserId } from "@/lib/server/current-user";
 import { createNotebook, getNotebooks } from "@/lib/server/notebook-repository";
 
 export async function GET() {
-  const notebooks = await getNotebooks();
+  const userId = await getCurrentUserId();
+  const notebooks = await getNotebooks(userId);
 
   return Response.json({
     notebooks,
@@ -20,7 +22,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const notebook = await createNotebook(body);
+    const userId = await getCurrentUserId();
+    const notebook = await createNotebook(userId, body);
 
     return Response.json({ notebook }, { status: 201 });
   } catch {

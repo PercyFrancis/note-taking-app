@@ -9,11 +9,14 @@
     "lint": "biome lint app components lib",
     "lint:fix": "biome lint --write app components lib",
     "format": "biome format --write app components lib",
-    "check": "biome check app components lib",
-    "check:fix": "biome check --write app components lib"
+    "check": "biome check app components lib scripts",
+    "check:fix": "biome check --write app components lib scripts",
+    "db:migrate": "node scripts/migrate.mjs"
   },
   "dependencies": {
     "@dnd-kit/react": "^0.4.0",
+    "@neondatabase/serverless": "^1.1.0",
+    "@next/env": "^16.2.9",
     "katex": "^0.17.0",
     "next": "16.2.6",
     "react": "19.2.4",
@@ -31,6 +34,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "ws": "^8.21.0"
   }
 }
