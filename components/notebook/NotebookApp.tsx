@@ -1,64 +1,86 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import NotebookEditor from "@/components/notebook/NotebookEditor";
 import NotebookSidebar from "@/components/notebook/NotebookSidebar";
 import {
+  createRemoteCell,
+  createRemoteNotebook,
+  deleteRemoteCell,
+  deleteRemoteNotebook,
+  duplicateRemoteCell,
+  loadRemoteNotebooks,
+  reorderRemoteCells,
+  updateRemoteCell,
+} from "@/lib/client/notebook-api";
+import {
   createNotebookExport,
-  loadStoredNotebooks,
   parseNotebookExport,
-  saveStoredNotebooks,
 } from "@/lib/notebook-storage";
-import type { Notebook, NotebookUpdate } from "@/lib/types";
+import type {
+  Notebook,
+  NotebookCell,
+  NotebookUpdate,
+  UpdateCellInput,
+} from "@/lib/types";
 import {
   applyCellHeightUpdate,
   applyDrawingCellUpdate,
   applyNotebookUpdate,
   applyTextCellUpdate,
   createDefaultNotebook,
-  createDrawingCell,
-  createTextCell,
   deleteCell,
-  duplicateCell,
   insertCellAfter,
   moveCellDown,
   moveCellUp,
   moveItem,
   notebookMatchesSearch,
 } from "@/lib/utils";
+import { primaryButtonClass } from "../ui/buttonStyles";
 
 export default function NotebookApp() {
-  function createNotebook() {
-    const notebook = createDefaultNotebook();
+  async function createNotebook() {
+    try {
+      const notebook = await createRemoteNotebook({
+        title: "New note",
+      });
 
-    setNotebooks((currentNotebooks) => [notebook, ...currentNotebooks]);
-    setActiveNotebookId(notebook.id);
+      setNotebooks((currentNotebooks) => [notebook, ...currentNotebooks]);
+      setActiveNotebookId(notebook.id);
+    } catch {
+      window.alert("Could not create notebook.");
+    }
   }
 
-  function deleteNotebook(id: string) {
+  async function deleteNotebook(id: string) {
     const shouldDelete = window.confirm("Delete this notebook?");
 
     if (!shouldDelete) {
       return;
     }
 
-    setNotebooks((currentNotebooks) => {
-      const remaining = currentNotebooks.filter(
-        (notebook) => notebook.id !== id,
-      );
+    try {
+      await deleteRemoteNotebook(id);
 
-      if (remaining.length === 0) {
-        const replacement = createDefaultNotebook();
-        setActiveNotebookId(replacement.id);
-        return [replacement];
-      }
+      setNotebooks((currentNotebooks) => {
+        const remaining = currentNotebooks.filter(
+          (notebook) => notebook.id !== id,
+        );
 
-      if (activeNotebookId === id) {
-        setActiveNotebookId(remaining[0].id);
-      }
+        if (remaining.length === 0) {
+          setActiveNotebookId("");
+          return [];
+        }
 
-      return remaining;
-    });
+        if (activeNotebookId === id) {
+          setActiveNotebookId(remaining[0].id);
+        }
+
+        return remaining;
+      });
+    } catch {
+      window.alert("Could not delete notebook.");
+    }
   }
 
   function updateNotebook(fields: NotebookUpdate) {
@@ -71,23 +93,102 @@ export default function NotebookApp() {
     );
   }
 
-  function addTextCell() {
-    const newCell = createTextCell();
+  async function addTextCell() {
+    if (!activeNotebook) {
+      return;
+    }
 
-    updateNotebook({
-      cells: [...activeNotebook.cells, newCell],
-    });
+    try {
+      const newCell = await createRemoteCell(activeNotebook.id, {
+        type: "text",
+      });
 
-    setFocusedCellId(newCell.id);
+      updateNotebook({
+        cells: [...activeNotebook.cells, newCell],
+      });
+
+      setFocusedCellId(newCell.id);
+    } catch {
+      window.alert("Could not create text cell.");
+    }
   }
 
-  function addDrawingCell() {
-    updateNotebook({
-      cells: [...activeNotebook.cells, createDrawingCell()],
-    });
+  async function addDrawingCell() {
+    if (!activeNotebook) {
+      return;
+    }
+
+    try {
+      const newCell = await createRemoteCell(activeNotebook.id, {
+        type: "drawing",
+      });
+
+      updateNotebook({
+        cells: [...activeNotebook.cells, newCell],
+      });
+    } catch {
+      window.alert("Could not create drawing cell.");
+    }
   }
+
+  const pendingCellUpdatesRef = useRef(new Map<string, UpdateCellInput>());
+  const cellSaveTimersRef = useRef(
+    new Map<string, ReturnType<typeof setTimeout>>(),
+  );
+
+  function queueCellSave(cellId: string, input: UpdateCellInput) {
+    const existingInput = pendingCellUpdatesRef.current.get(cellId) ?? {};
+    const nextInput = {
+      ...existingInput,
+      ...input,
+    };
+
+    pendingCellUpdatesRef.current.set(cellId, nextInput);
+
+    const existingTimer = cellSaveTimersRef.current.get(cellId);
+
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+    }
+
+    const nextTimer = setTimeout(async () => {
+      const inputToSave = pendingCellUpdatesRef.current.get(cellId);
+
+      if (!inputToSave) {
+        cellSaveTimersRef.current.delete(cellId);
+        return;
+      }
+
+      try {
+        await updateRemoteCell(cellId, inputToSave);
+
+        if (pendingCellUpdatesRef.current.get(cellId) === inputToSave) {
+          pendingCellUpdatesRef.current.delete(cellId);
+        }
+      } catch {
+        window.alert("Could not save cell.");
+      } finally {
+        if (cellSaveTimersRef.current.get(cellId) === nextTimer) {
+          cellSaveTimersRef.current.delete(cellId);
+        }
+      }
+    }, 600);
+
+    cellSaveTimersRef.current.set(cellId, nextTimer);
+  }
+
+  useEffect(() => {
+    return () => {
+      for (const timer of cellSaveTimersRef.current.values()) {
+        clearTimeout(timer);
+      }
+    };
+  }, []);
 
   function updateTextCell(cellId: string, content: string) {
+    if (!activeNotebook) {
+      return;
+    }
     updateNotebook({
       cells: activeNotebook.cells.map((cell) =>
         cell.id === cellId && cell.type === "text"
@@ -95,9 +196,14 @@ export default function NotebookApp() {
           : cell,
       ),
     });
+
+    queueCellSave(cellId, { content });
   }
 
   function updateDrawingCell(cellId: string, drawing: string | null) {
+    if (!activeNotebook) {
+      return;
+    }
     updateNotebook({
       cells: activeNotebook.cells.map((cell) =>
         cell.id === cellId && cell.type === "drawing"
@@ -105,62 +211,192 @@ export default function NotebookApp() {
           : cell,
       ),
     });
+
+    queueCellSave(cellId, { drawing });
   }
 
   function updateCellHeight(cellId: string, heightPx: number) {
+    if (!activeNotebook) {
+      return;
+    }
     updateNotebook({
       cells: activeNotebook.cells.map((cell) =>
         cell.id === cellId ? applyCellHeightUpdate(cell, heightPx) : cell,
       ),
     });
+
+    queueCellSave(cellId, { heightPx });
   }
 
-  function addTextCellAfter(cellId: string) {
-    const newCell = createTextCell();
+  async function addTextCellAfter(cellId: string) {
+    if (!activeNotebook) {
+      return;
+    }
 
-    updateNotebook({
-      cells: insertCellAfter(activeNotebook.cells, cellId, newCell),
-    });
+    try {
+      const newCell = await createRemoteCell(activeNotebook.id, {
+        type: "text",
+        afterCellId: cellId,
+      });
 
-    setFocusedCellId(newCell.id);
+      updateNotebook({
+        cells: insertCellAfter(activeNotebook.cells, cellId, newCell),
+      });
+
+      setFocusedCellId(newCell.id);
+    } catch {
+      window.alert("Could not create text cell.");
+    }
   }
 
-  function addDrawingCellAfter(cellId: string) {
-    updateNotebook({
-      cells: insertCellAfter(activeNotebook.cells, cellId, createDrawingCell()),
-    });
+  async function addDrawingCellAfter(cellId: string) {
+    if (!activeNotebook) {
+      return;
+    }
+
+    try {
+      const newCell = await createRemoteCell(activeNotebook.id, {
+        type: "drawing",
+        afterCellId: cellId,
+      });
+
+      updateNotebook({
+        cells: insertCellAfter(activeNotebook.cells, cellId, newCell),
+      });
+    } catch {
+      window.alert("Could not create drawing cell.");
+    }
   }
 
-  function removeCell(cellId: string) {
-    const nextCells = deleteCell(activeNotebook.cells, cellId);
+  function clearQueuedCellSave(cellId: string) {
+    const existingTimer = cellSaveTimersRef.current.get(cellId);
 
-    updateNotebook({
-      cells: nextCells.length > 0 ? nextCells : [createTextCell()],
-    });
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+    }
+
+    cellSaveTimersRef.current.delete(cellId);
+    pendingCellUpdatesRef.current.delete(cellId);
   }
 
-  function copyCell(cellId: string) {
-    updateNotebook({
-      cells: duplicateCell(activeNotebook.cells, cellId),
-    });
+  function haveSameCellOrder(
+    currentCells: NotebookCell[],
+    nextCells: NotebookCell[],
+  ): boolean {
+    return currentCells.every(
+      (cell, index) => cell.id === nextCells[index]?.id,
+    );
+  }
+
+  async function removeCell(cellId: string) {
+    if (!activeNotebook) {
+      return;
+    }
+
+    try {
+      await deleteRemoteCell(cellId);
+      clearQueuedCellSave(cellId);
+
+      const nextCells = deleteCell(activeNotebook.cells, cellId);
+
+      updateNotebook({
+        cells: nextCells,
+      });
+    } catch {
+      window.alert("Could not delete cell.");
+    }
+  }
+
+  async function copyCell(cellId: string) {
+    if (!activeNotebook) {
+      return;
+    }
+
+    try {
+      await flushQueuedCellSave(cellId);
+
+      const copiedCell = await duplicateRemoteCell(cellId);
+
+      updateNotebook({
+        cells: insertCellAfter(activeNotebook.cells, cellId, copiedCell),
+      });
+    } catch {
+      window.alert("Could not copy cell.");
+    }
   }
 
   function moveCellEarlier(cellId: string) {
+    if (!activeNotebook) {
+      return;
+    }
+
+    const nextCells = moveCellUp(activeNotebook.cells, cellId);
+
+    if (haveSameCellOrder(activeNotebook.cells, nextCells)) {
+      return;
+    }
+
     updateNotebook({
-      cells: moveCellUp(activeNotebook.cells, cellId),
+      cells: nextCells,
     });
+
+    saveCellOrder(nextCells);
   }
 
   function moveCellLater(cellId: string) {
+    if (!activeNotebook) {
+      return;
+    }
+
+    const nextCells = moveCellDown(activeNotebook.cells, cellId);
+
+    if (haveSameCellOrder(activeNotebook.cells, nextCells)) {
+      return;
+    }
+
     updateNotebook({
-      cells: moveCellDown(activeNotebook.cells, cellId),
+      cells: nextCells,
     });
+
+    saveCellOrder(nextCells);
   }
 
   function reorderCells(fromIndex: number, toIndex: number) {
+    if (!activeNotebook) {
+      return;
+    }
+
+    const nextCells = moveItem(activeNotebook.cells, fromIndex, toIndex);
+
+    if (haveSameCellOrder(activeNotebook.cells, nextCells)) {
+      return;
+    }
+
     updateNotebook({
-      cells: moveItem(activeNotebook.cells, fromIndex, toIndex),
+      cells: nextCells,
     });
+
+    saveCellOrder(nextCells);
+  }
+
+  async function flushQueuedCellSave(cellId: string) {
+    const existingTimer = cellSaveTimersRef.current.get(cellId);
+    const inputToSave = pendingCellUpdatesRef.current.get(cellId);
+
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+      cellSaveTimersRef.current.delete(cellId);
+    }
+
+    if (!inputToSave) {
+      return;
+    }
+
+    await updateRemoteCell(cellId, inputToSave);
+
+    if (pendingCellUpdatesRef.current.get(cellId) === inputToSave) {
+      pendingCellUpdatesRef.current.delete(cellId);
+    }
   }
 
   const [notebooks, setNotebooks] = useState<Notebook[]>(() => {
@@ -211,9 +447,22 @@ export default function NotebookApp() {
     }
   }
 
+  async function saveCellOrder(cells: NotebookCell[]) {
+    if (!activeNotebook) {
+      return;
+    }
+
+    try {
+      await reorderRemoteCells(activeNotebook.id, {
+        cellIds: cells.map((cell) => cell.id),
+      });
+    } catch {
+      window.alert("Could not save cell order.");
+    }
+  }
+
   const activeNotebook =
-    notebooks.find((notebook) => notebook.id === activeNotebookId) ??
-    notebooks[0];
+    notebooks.find((notebook) => notebook.id === activeNotebookId) ?? null;
 
   const [searchQuery, setSearchQuery] = useState("");
   const filteredNotebooks = notebooks.filter((notebook) =>
@@ -221,27 +470,21 @@ export default function NotebookApp() {
   );
   const [focusedCellId, setFocusedCellId] = useState<string | null>(null);
 
-  const [hasLoadedStoredNotebooks, setHasLoadedStoredNotebooks] =
-    useState(false);
-
   useEffect(() => {
-    const storedNotebooks = loadStoredNotebooks();
+    async function loadNotebooks() {
+      try {
+        const remoteNotebooks = await loadRemoteNotebooks();
 
-    if (storedNotebooks && storedNotebooks.length > 0) {
-      setNotebooks(storedNotebooks);
-      setActiveNotebookId(storedNotebooks[0].id);
+        setNotebooks(remoteNotebooks);
+        setActiveNotebookId(remoteNotebooks[0]?.id ?? "");
+      } catch {
+        window.alert("Could not load notebooks from the server.");
+      }
     }
 
-    setHasLoadedStoredNotebooks(true);
+    loadNotebooks();
   }, []);
 
-  useEffect(() => {
-    if (!hasLoadedStoredNotebooks) {
-      return;
-    }
-
-    saveStoredNotebooks(notebooks);
-  }, [notebooks, hasLoadedStoredNotebooks]);
   return (
     <main className="flex min-h-screen flex-col bg-slate-100 text-slate-950 md:flex-row">
       <NotebookSidebar
@@ -253,27 +496,46 @@ export default function NotebookApp() {
         onCreateNotebook={createNotebook}
         onDeleteNotebook={deleteNotebook}
       />
-
-      <NotebookEditor
-        notebook={activeNotebook}
-        focusedCellId={focusedCellId}
-        onUpdateNotebook={updateNotebook}
-        onAddTextCell={addTextCell}
-        onUpdateTextCell={updateTextCell}
-        onAddDrawingCell={addDrawingCell}
-        onUpdateDrawingCell={updateDrawingCell}
-        onUpdateCellHeight={updateCellHeight}
-        onAddDrawingCellAfter={addDrawingCellAfter}
-        onAddTextCellAfter={addTextCellAfter}
-        onRemoveCell={removeCell}
-        onCopyCell={copyCell}
-        onMoveCellUp={moveCellEarlier}
-        onMoveCellDown={moveCellLater}
-        onReorderCells={reorderCells}
-        onFocusedCellHandled={() => setFocusedCellId(null)}
-        onExportNotebooks={exportNotebooks}
-        onImportNotebooks={importNotebooks}
-      />
+      {activeNotebook ? (
+        <NotebookEditor
+          notebook={activeNotebook}
+          focusedCellId={focusedCellId}
+          onUpdateNotebook={updateNotebook}
+          onAddTextCell={addTextCell}
+          onUpdateTextCell={updateTextCell}
+          onAddDrawingCell={addDrawingCell}
+          onUpdateDrawingCell={updateDrawingCell}
+          onUpdateCellHeight={updateCellHeight}
+          onAddDrawingCellAfter={addDrawingCellAfter}
+          onAddTextCellAfter={addTextCellAfter}
+          onRemoveCell={removeCell}
+          onCopyCell={copyCell}
+          onMoveCellUp={moveCellEarlier}
+          onMoveCellDown={moveCellLater}
+          onReorderCells={reorderCells}
+          onFocusedCellHandled={() => setFocusedCellId(null)}
+          onExportNotebooks={exportNotebooks}
+          onImportNotebooks={importNotebooks}
+        />
+      ) : (
+        <section className="flex min-w-0 flex-1 items-center justify-center bg-slate-50 px-6 py-12">
+          <div className="max-w-sm text-center">
+            <h2 className="text-lg font-semibold text-slate-900">
+              No notebook selected
+            </h2>
+            <p className="mt-2 text-sm text-slate-500">
+              Create a notebook to start writing.
+            </p>
+            <button
+              type="button"
+              onClick={createNotebook}
+              className={[primaryButtonClass, "mt-4 px-4"].join(" ")}
+            >
+              New notebook
+            </button>
+          </div>
+        </section>
+      )}
     </main>
   );
 }

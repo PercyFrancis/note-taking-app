@@ -263,3 +263,9 @@ export function createSearchPreview(text: string, maxLength = 80): string {
 
   return `${singleLineText.slice(0, maxLength)}...`;
 }
+
+export function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    value,
+  );
+}

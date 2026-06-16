@@ -70,3 +70,57 @@ export interface CellRow {
   created_at: Date | string;
   updated_at: Date | string;
 }
+
+export interface UpdateNotebookInput {
+  title: string;
+}
+
+export interface ChangedNotebookRow {
+  id: string;
+}
+
+export interface NotebookRouteContext {
+  params: Promise<{
+    notebookId: string;
+  }>;
+}
+
+export interface CreateCellInput {
+  type: CellType;
+  afterCellId?: string | null;
+}
+
+export interface CellResponse {
+  cell: NotebookCell;
+}
+
+export interface NotebookCellsRouteContext {
+  params: Promise<{
+    notebookId: string;
+  }>;
+}
+
+export interface CellRouteContext {
+  params: Promise<{
+    cellId: string;
+  }>;
+}
+
+export interface ChangedCellRow {
+  id: string;
+}
+
+export interface UpdateCellInput {
+  content?: string;
+  drawing?: string | null;
+  heightPx?: number;
+}
+
+export type UpdateCellResult =
+  | { status: "updated"; cell: NotebookCell }
+  | { status: "not_found" }
+  | { status: "invalid_cell_type" };
+
+export interface ReorderCellsInput {
+  cellIds: string[];
+}

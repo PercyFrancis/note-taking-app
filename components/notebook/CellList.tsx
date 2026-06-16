@@ -11,8 +11,8 @@ interface CellListProps {
   onUpdateCellHeight: (cellId: string, heightPx: number) => void;
   onAddTextCellAfter: (cellId: string) => void;
   onAddDrawingCellAfter: (cellId: string) => void;
-  onRemoveCell: (cellId: string) => void;
-  onCopyCell: (cellId: string) => void;
+  onRemoveCell: (cellId: string) => void | Promise<void>;
+  onCopyCell: (cellId: string) => void | Promise<void>;
   onMoveCellUp: (cellId: string) => void;
   onMoveCellDown: (cellId: string) => void;
   onReorderCells: (fromIndex: number, toIndex: number) => void;
