@@ -1,7 +1,10 @@
 "use client";
+import { DragDropProvider } from "@dnd-kit/react";
+import { isSortable } from "@dnd-kit/react/sortable";
 import { primaryButtonClass } from "@/components/ui/buttonStyles";
 import type { Notebook } from "@/lib/types";
 import { getNotebookSearchPreview } from "@/lib/utils";
+import NotebookSidebarRow from "./NotebookSidebarRow";
 
 interface NotebookSidebarProps {
   notebooks: Notebook[];
@@ -11,6 +14,7 @@ interface NotebookSidebarProps {
   onSelectNotebook: (id: string) => void;
   onCreateNotebook: () => void;
   onDeleteNotebook: (id: string) => void;
+  onReorderNotebooks: (fromIndex: number, toIndex: number) => void;
 }
 
 export default function NotebookSidebar({
@@ -21,7 +25,9 @@ export default function NotebookSidebar({
   onSelectNotebook,
   onCreateNotebook,
   onDeleteNotebook,
+  onReorderNotebooks,
 }: NotebookSidebarProps) {
+  const isReorderDisabled = searchQuery.trim() !== "";
   return (
     <aside className="w-full border-b border-slate-200 bg-white md:w-72 md:border-r md:border-b-0">
       <div className="border-b border-slate-200 p-4">
@@ -48,56 +54,44 @@ export default function NotebookSidebar({
             No notebooks found.
           </p>
         ) : (
-          notebooks.map((notebook) => {
-            const isActive = notebook.id === activeNotebookId;
-            const searchPreview = getNotebookSearchPreview(
-              notebook,
-              searchQuery,
-            );
-            return (
-              <div
-                key={notebook.id}
-                className={`group flex items-center gap-2 rounded-md px-2 py-1 transition-colors ${
-                  isActive ? "bg-slate-900" : "hover:bg-slate-100"
-                }`}
-              >
-                <button
-                  type="button"
-                  onClick={() => onSelectNotebook(notebook.id)}
-                  className={`min-w-0 flex-1 rounded px-1 py-1 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 ${
-                    isActive ? "text-white" : "text-slate-700"
-                  }`}
-                >
-                  <span className="block truncate font-medium">
-                    {notebook.title}
-                  </span>
+          <DragDropProvider
+            onDragEnd={(event) => {
+              if (isReorderDisabled) return;
 
-                  {searchPreview ? (
-                    <span
-                      className={`mt-1 block truncate text-xs ${
-                        isActive ? "text-slate-300" : "text-slate-500"
-                      }`}
-                    >
-                      {searchPreview}
-                    </span>
-                  ) : null}
-                </button>
+              if (event.canceled) return;
 
-                <button
-                  type="button"
-                  onClick={() => onDeleteNotebook(notebook.id)}
-                  className={`h-8 w-8 shrink-0 rounded-md text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 ${
-                    isActive
-                      ? "text-slate-300 hover:bg-slate-800 hover:text-white"
-                      : "text-slate-400 hover:bg-red-50 hover:text-red-600"
-                  }`}
-                  aria-label={`Delete ${notebook.title}`}
-                >
-                  x
-                </button>
-              </div>
-            );
-          })
+              const { source } = event.operation;
+
+              if (!isSortable(source)) return;
+
+              const { initialIndex, index } = source;
+
+              if (initialIndex === index) return;
+
+              onReorderNotebooks(initialIndex, index);
+            }}
+          >
+            {notebooks.map((notebook, index) => {
+              const isActive = notebook.id === activeNotebookId;
+              const searchPreview = getNotebookSearchPreview(
+                notebook,
+                searchQuery,
+              );
+
+              return (
+                <NotebookSidebarRow
+                  key={notebook.id}
+                  notebook={notebook}
+                  index={index}
+                  isActive={isActive}
+                  searchPreview={searchPreview}
+                  isReorderDisabled={isReorderDisabled}
+                  onDeleteNotebook={onDeleteNotebook}
+                  onSelectNotebook={onSelectNotebook}
+                />
+              );
+            })}
+          </DragDropProvider>
         )}
       </nav>
     </aside>

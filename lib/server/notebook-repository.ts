@@ -44,10 +44,10 @@ function mapCellRowToNotebookCell(row: CellRow): NotebookCell {
 export async function getNotebooks(userId: string): Promise<Notebook[]> {
   const notebookRows = (await sql.query(
     `
-      select id, title, created_at, updated_at
+      select id, title, position, created_at, updated_at
       from notebooks
       where user_id = $1
-      order by updated_at desc
+      order by position asc
     `,
     [userId],
   )) as NotebookRow[];
@@ -107,11 +107,17 @@ export async function createNotebook(
 
   await sql.transaction((txn) => [
     txn`
-      insert into notebooks (id, user_id, title, created_at, updated_at)
+      update notebooks
+      set position = position + 1
+      where user_id = ${userId}
+    `,
+    txn`
+      insert into notebooks (id, user_id, title, position, created_at, updated_at)
       values (
         ${notebook.id},
         ${userId},
         ${notebook.title},
+        ${0},
         to_timestamp(${notebook.createdAt} / 1000.0),
         to_timestamp(${notebook.updatedAt} / 1000.0)
       )
@@ -173,11 +179,21 @@ export async function deleteNotebook(
   notebookId: string,
 ): Promise<boolean> {
   const rows = (await sql.query(
-    `
-      delete from notebooks
-      where id = $1
-        and user_id = $2
-      returning id
+    ` 
+      with deleted_notebook as (
+        delete from notebooks
+        where id = $1
+          and user_id = $2
+        returning id, user_id, position
+      ),
+      shifted_notebooks as (
+        update notebooks
+        set position = position - 1
+        where user_id = (select user_id from deleted_notebook)
+          and position > (select position from deleted_notebook)
+        returning id
+      )
+      select id from deleted_notebook
     `,
     [notebookId, userId],
   )) as ChangedNotebookRow[];
@@ -597,4 +613,53 @@ export async function duplicateCell(
   }
 
   return mapCellRowToNotebookCell(rows[0]);
+}
+
+export async function reorderNotebooks(
+  userId: string,
+  notebookIds: string[],
+): Promise<boolean> {
+  const rows = (await sql.query(
+    `
+      with target_user as (
+        select id
+        from users
+        where id = $1
+      ),
+      requested_order as (
+        select *
+        from unnest($2::uuid[]) with ordinality as ordered_notebooks(id, position)
+      ),
+      user_notebooks as (
+        select notebooks.id
+        from notebooks
+        where notebooks.user_id = (select id from target_user)
+      ),
+      valid_order as (
+        select count(*) as matching_count
+        from requested_order
+        join user_notebooks on user_notebooks.id = requested_order.id
+      ),
+      updated_notebooks as (
+        update notebooks
+        set position = requested_order.position - 1,
+            updated_at = now()
+        from requested_order
+        where notebooks.id = requested_order.id
+          and notebooks.user_id = (select id from target_user)
+          and (select matching_count from valid_order) = (
+            select count(*) from user_notebooks
+          )
+          and (select count(*) from requested_order) = (
+            select count(*) from user_notebooks
+          )
+        returning notebooks.id
+      )
+      select id
+      from updated_notebooks
+    `,
+    [userId, notebookIds],
+  )) as ChangedNotebookRow[];
+
+  return rows.length > 0;
 }

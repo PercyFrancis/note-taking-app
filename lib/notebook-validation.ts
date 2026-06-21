@@ -9,6 +9,7 @@ import type {
   NotebookResponse,
   NotebooksResponse,
   ReorderCellsInput,
+  ReorderNotebooksInput,
   StoredNotebooks,
   TextCell,
   UpdateCellInput,
@@ -199,4 +200,28 @@ export function isReorderCellsInput(
   const uniqueCellIds = new Set(value.cellIds);
 
   return allIdsAreUuids && uniqueCellIds.size === value.cellIds.length;
+}
+
+export function isReorderNotebooksInput(
+  value: unknown,
+): value is ReorderNotebooksInput {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  if (!Array.isArray(value.notebookIds)) {
+    return false;
+  }
+
+  if (value.notebookIds.length === 0) {
+    return false;
+  }
+
+  const allIdsAreUuids = value.notebookIds.every(
+    (notebookId) => typeof notebookId === "string" && isUuid(notebookId),
+  );
+
+  const uniqueNotebookIds = new Set(value.notebookIds);
+
+  return allIdsAreUuids && uniqueNotebookIds.size === value.notebookIds.length;
 }
