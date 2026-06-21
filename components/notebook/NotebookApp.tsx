@@ -11,6 +11,7 @@ import {
   duplicateRemoteCell,
   loadRemoteNotebooks,
   reorderRemoteCells,
+  reorderRemoteNotebooks,
   updateRemoteCell,
 } from "@/lib/client/notebook-api";
 import {
@@ -461,6 +462,36 @@ export default function NotebookApp() {
     }
   }
 
+  function haveSameNotebookOrder(
+    currentNotebooks: Notebook[],
+    nextNotebooks: Notebook[],
+  ): boolean {
+    return currentNotebooks.every(
+      (notebook, index) => notebook.id === nextNotebooks[index]?.id,
+    );
+  }
+
+  function reorderNotebooks(fromIndex: number, toIndex: number) {
+    const nextNotebooks = moveItem(notebooks, fromIndex, toIndex);
+
+    if (haveSameNotebookOrder(notebooks, nextNotebooks)) {
+      return;
+    }
+
+    setNotebooks(nextNotebooks);
+    saveNotebookOrder(nextNotebooks);
+  }
+
+  async function saveNotebookOrder(notebooks: Notebook[]) {
+    try {
+      await reorderRemoteNotebooks({
+        notebookIds: notebooks.map((notebook) => notebook.id),
+      });
+    } catch {
+      window.alert("Could not save notebook order.");
+    }
+  }
+
   const activeNotebook =
     notebooks.find((notebook) => notebook.id === activeNotebookId) ?? null;
 
@@ -495,6 +526,7 @@ export default function NotebookApp() {
         onSelectNotebook={setActiveNotebookId}
         onCreateNotebook={createNotebook}
         onDeleteNotebook={deleteNotebook}
+        onReorderNotebooks={reorderNotebooks}
       />
       {activeNotebook ? (
         <NotebookEditor

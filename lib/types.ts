@@ -55,6 +55,7 @@ export interface NotebookResponse {
 export interface NotebookRow {
   id: string;
   title: string;
+  position: number;
   created_at: Date | string;
   updated_at: Date | string;
 }
@@ -123,4 +124,8 @@ export type UpdateCellResult =
 
 export interface ReorderCellsInput {
   cellIds: string[];
+}
+
+export interface ReorderNotebooksInput {
+  notebookIds: string[];
 }

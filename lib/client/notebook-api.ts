@@ -10,6 +10,7 @@ import type {
   Notebook,
   NotebookCell,
   ReorderCellsInput,
+  ReorderNotebooksInput,
   UpdateCellInput,
   UpdateNotebookInput,
 } from "../types";
@@ -176,4 +177,20 @@ export async function duplicateRemoteCell(
   }
 
   return data.cell;
+}
+
+export async function reorderRemoteNotebooks(
+  input: ReorderNotebooksInput,
+): Promise<void> {
+  const response = await fetch(`/api/notebooks/reorder`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to reorder notebooks");
+  }
 }
