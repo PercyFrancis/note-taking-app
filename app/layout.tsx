@@ -1,13 +1,6 @@
-import {
-  ClerkProvider,
-  Show,
-  SignInButton,
-  SignUpButton,
-  UserButton,
-} from "@clerk/nextjs";
+import { ClerkProvider } from "@clerk/nextjs";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { primaryButtonClass } from "@/components/ui/buttonStyles";
 import "./globals.css";
 import "katex/dist/katex.min.css";
 
@@ -37,28 +30,7 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <ClerkProvider afterSignOutUrl="/">
-          <header className="flex justify-end items-center p-4 gap-4 h-16">
-            <Show when="signed-out">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <SignInButton>
-                  <button type="button" className={primaryButtonClass}>
-                    Sign In
-                  </button>
-                </SignInButton>
-                <SignUpButton>
-                  <button type="button" className={primaryButtonClass}>
-                    Sign Up
-                  </button>
-                </SignUpButton>
-              </div>
-            </Show>
-            <Show when="signed-in">
-              <UserButton />
-            </Show>
-          </header>
-          {children}
-        </ClerkProvider>
+        <ClerkProvider afterSignOutUrl="/">{children}</ClerkProvider>
       </body>
     </html>
   );

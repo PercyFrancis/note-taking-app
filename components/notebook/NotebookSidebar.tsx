@@ -1,4 +1,5 @@
 "use client";
+import { UserButton } from "@clerk/nextjs";
 import { DragDropProvider } from "@dnd-kit/react";
 import { isSortable } from "@dnd-kit/react/sortable";
 import { primaryButtonClass } from "@/components/ui/buttonStyles";
@@ -33,6 +34,9 @@ export default function NotebookSidebar({
       <div className="border-b border-slate-200 p-4">
         <div className="flex items-center justify-between">
           <h1 className="text-lg font-semibold">Notebook</h1>
+          <UserButton />
+        </div>
+        <div className="flex items-center justify-between mt-3">
           <button
             type="button"
             onClick={onCreateNotebook}
