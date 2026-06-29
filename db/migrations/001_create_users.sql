@@ -8,11 +8,3 @@ create table if not exists users (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
-insert into users (id, email, name)
-values (
-  '00000000-0000-0000-0000-000000000001',
-  'dev@example.com',
-  'Development User'
-)
-on conflict (id) do nothing;

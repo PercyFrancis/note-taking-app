@@ -129,3 +129,7 @@ export interface ReorderCellsInput {
 export interface ReorderNotebooksInput {
   notebookIds: string[];
 }
+
+export type UserIdRow = {
+  id: string;
+};

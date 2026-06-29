@@ -9,11 +9,12 @@
     "lint": "biome lint app components lib",
     "lint:fix": "biome lint --write app components lib",
     "format": "biome format --write app components lib",
-    "check": "biome check app components lib scripts",
-    "check:fix": "biome check --write app components lib scripts",
+    "check": "biome check app components lib scripts proxy.ts",
+    "check:fix": "biome check --write app components lib scripts proxy.ts",
     "db:migrate": "node scripts/migrate.mjs"
   },
   "dependencies": {
+    "@clerk/nextjs": "^7.5.7",
     "@dnd-kit/react": "^0.4.0",
     "@neondatabase/serverless": "^1.1.0",
     "@next/env": "^16.2.9",
