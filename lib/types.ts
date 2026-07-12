@@ -133,3 +133,10 @@ export interface ReorderNotebooksInput {
 export type UserIdRow = {
   id: string;
 };
+
+export interface ClerkUserSyncInput {
+  clerkUserId: string;
+  email: string | null;
+  name: string | null;
+  imageUrl: string | null;
+}
