@@ -13,6 +13,7 @@ import {
   reorderRemoteCells,
   reorderRemoteNotebooks,
   updateRemoteCell,
+  updateRemoteNotebook,
 } from "@/lib/client/notebook-api";
 import {
   createNotebookExport,
@@ -23,6 +24,7 @@ import type {
   NotebookCell,
   NotebookUpdate,
   UpdateCellInput,
+  UpdateNotebookInput,
 } from "@/lib/types";
 import {
   applyCellHeightUpdate,
@@ -92,6 +94,10 @@ export default function NotebookApp() {
           : notebook,
       ),
     );
+
+    if (fields.title !== undefined && activeNotebookId !== "") {
+      queueNotebookTitleSave(activeNotebookId, { title: fields.title });
+    }
   }
 
   async function addTextCell() {
@@ -181,6 +187,43 @@ export default function NotebookApp() {
   useEffect(() => {
     return () => {
       for (const timer of cellSaveTimersRef.current.values()) {
+        clearTimeout(timer);
+      }
+    };
+  }, []);
+
+  const notebookTitleSaveTimersRef = useRef(
+    new Map<string, ReturnType<typeof setTimeout>>(),
+  );
+
+  function queueNotebookTitleSave(
+    notebookId: string,
+    input: UpdateNotebookInput,
+  ) {
+    const existingTimer = notebookTitleSaveTimersRef.current.get(notebookId);
+
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+    }
+
+    const nextTimer = setTimeout(async () => {
+      try {
+        await updateRemoteNotebook(notebookId, input);
+      } catch {
+        window.alert("Could not save notebook.");
+      } finally {
+        if (notebookTitleSaveTimersRef.current.get(notebookId) === nextTimer) {
+          notebookTitleSaveTimersRef.current.delete(notebookId);
+        }
+      }
+    }, 600);
+
+    notebookTitleSaveTimersRef.current.set(notebookId, nextTimer);
+  }
+
+  useEffect(() => {
+    return () => {
+      for (const timer of notebookTitleSaveTimersRef.current.values()) {
         clearTimeout(timer);
       }
     };
