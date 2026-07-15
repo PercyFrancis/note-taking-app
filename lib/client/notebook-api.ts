@@ -7,6 +7,7 @@ import {
 import type {
   CreateCellInput,
   CreateNotebookInput,
+  ImportNotebooksInput,
   Notebook,
   NotebookCell,
   ReorderCellsInput,
@@ -193,4 +194,28 @@ export async function reorderRemoteNotebooks(
   if (!response.ok) {
     throw new Error("Failed to reorder notebooks");
   }
+}
+
+export async function importRemoteNotebooks(
+  input: ImportNotebooksInput,
+): Promise<Notebook[]> {
+  const response = await fetch("/api/notebooks/import", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to import notebooks");
+  }
+
+  const data: unknown = await response.json();
+
+  if (!isNotebooksResponse(data)) {
+    throw new Error("Invalid notebook response");
+  }
+
+  return data.notebooks;
 }

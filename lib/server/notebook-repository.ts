@@ -4,9 +4,11 @@ import type {
   ChangedNotebookRow,
   CreateCellInput,
   CreateNotebookInput,
+  ImportNotebooksInput,
   Notebook,
   NotebookCell,
   NotebookRow,
+  PositionRow,
   UpdateCellInput,
   UpdateCellResult,
 } from "../types";
@@ -662,4 +664,106 @@ export async function reorderNotebooks(
   )) as ChangedNotebookRow[];
 
   return rows.length > 0;
+}
+export async function importNotebooks(
+  userId: string,
+  input: ImportNotebooksInput,
+): Promise<Notebook[]> {
+  const preparedNotebooks = input.notebooks.map((notebook) => ({
+    id: createId(),
+    title: notebook.title,
+    cells: notebook.cells.map((cell) => {
+      if (cell.type === "text") {
+        return {
+          id: createId(),
+          type: "text",
+          content: cell.content,
+          heightPx: cell.heightPx,
+        };
+      }
+
+      return {
+        id: createId(),
+        type: "drawing",
+        drawing: cell.drawing,
+        heightPx: cell.heightPx,
+      };
+    }),
+  }));
+
+  const positionRows = (await sql.query(
+    `
+    select coalesce(max(position), -1) as position
+    from notebooks
+    where user_id = $1
+    `,
+    [userId],
+  )) as PositionRow[];
+  const startPosition =
+    input.mode === "replace" ? 0 : (positionRows[0]?.position ?? -1) + 1;
+
+  await sql.transaction((txn) => [
+    ...(input.mode === "replace"
+      ? [
+          txn`
+            delete from notebooks
+            where user_id = ${userId}
+          `,
+        ]
+      : []),
+
+    ...preparedNotebooks.map(
+      (notebook, notebookIndex) =>
+        txn`
+        insert into notebooks (
+          id,
+          user_id,
+          title,
+          position,
+          created_at,
+          updated_at
+        )
+        values (
+          ${notebook.id},
+          ${userId},
+          ${notebook.title},
+          ${startPosition + notebookIndex},
+          now(),
+          now()
+        )
+      `,
+    ),
+
+    ...preparedNotebooks.flatMap((notebook) =>
+      notebook.cells.map(
+        (cell, cellIndex) =>
+          txn`
+          insert into cells (
+          id,
+          notebook_id,
+          type,
+          position,
+          content,
+          drawing,
+          height_px,
+          created_at,
+          updated_at
+        )
+        values (
+          ${cell.id},
+          ${notebook.id},
+          ${cell.type},
+          ${cellIndex},
+          ${cell.type === "text" ? cell.content : null},
+          ${cell.type === "drawing" ? cell.drawing : null},
+          ${cell.heightPx},
+          now(),
+          now()
+        )
+        `,
+      ),
+    ),
+  ]);
+
+  return getNotebooks(userId);
 }

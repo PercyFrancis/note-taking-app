@@ -140,3 +140,32 @@ export interface ClerkUserSyncInput {
   name: string | null;
   imageUrl: string | null;
 }
+
+export interface ImportNotebooksInput {
+  mode: "append" | "replace";
+  notebooks: ImportedNotebook[];
+}
+
+export interface ImportedNotebook {
+  title: string;
+  cells: ImportedCell[];
+}
+
+export interface ImportedBaseCell {
+  heightPx: number;
+}
+
+export interface ImportedTextCell extends ImportedBaseCell {
+  type: "text";
+  content: string;
+}
+export interface ImportedDrawingCell extends ImportedBaseCell {
+  type: "drawing";
+  drawing: string | null;
+}
+
+export type ImportedCell = ImportedTextCell | ImportedDrawingCell;
+
+export type PositionRow = {
+  position: number;
+};

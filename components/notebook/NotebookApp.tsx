@@ -9,6 +9,7 @@ import {
   deleteRemoteCell,
   deleteRemoteNotebook,
   duplicateRemoteCell,
+  importRemoteNotebooks,
   loadRemoteNotebooks,
   reorderRemoteCells,
   reorderRemoteNotebooks,
@@ -20,6 +21,7 @@ import {
   parseNotebookExport,
 } from "@/lib/notebook-storage";
 import type {
+  ImportNotebooksInput,
   Notebook,
   NotebookCell,
   NotebookUpdate,
@@ -40,6 +42,7 @@ import {
   notebookMatchesSearch,
 } from "@/lib/utils";
 import { primaryButtonClass } from "../ui/buttonStyles";
+import ImportNotebookDialog from "./ImportNotebookDialog";
 
 export default function NotebookApp() {
   async function createNotebook() {
@@ -466,6 +469,16 @@ export default function NotebookApp() {
     URL.revokeObjectURL(url);
   }
 
+  type PendingImport = {
+    fileName: string;
+    notebooks: Notebook[];
+  };
+
+  const [pendingImport, setPendingImport] = useState<PendingImport | null>(
+    null,
+  );
+  const [isImporting, setIsImporting] = useState(false);
+
   async function importNotebooks(file: File) {
     try {
       const fileText = await file.text();
@@ -476,18 +489,54 @@ export default function NotebookApp() {
         return;
       }
 
-      const shouldImport = window.confirm(
-        "Importing will replace your current notebooks. Continue?",
-      );
-
-      if (!shouldImport) {
-        return;
-      }
-
-      setNotebooks(importedNotebooks);
-      setActiveNotebookId(importedNotebooks[0].id);
+      setPendingImport({
+        fileName: file.name,
+        notebooks: importedNotebooks,
+      });
     } catch {
       window.alert("The selected file could not be read.");
+    }
+  }
+
+  async function confirmNotebookImport(mode: "append" | "replace") {
+    if (!pendingImport || isImporting) {
+      return;
+    }
+
+    setIsImporting(true);
+    try {
+      const input: ImportNotebooksInput = {
+        mode,
+        notebooks: pendingImport.notebooks.map((notebook) => ({
+          title: notebook.title,
+          cells: notebook.cells.map((cell) => {
+            if (cell.type === "text") {
+              return {
+                type: "text",
+                content: cell.content,
+                heightPx: cell.heightPx,
+              };
+            }
+
+            return {
+              type: "drawing",
+              drawing: cell.drawing,
+              heightPx: cell.heightPx,
+            };
+          }),
+        })),
+      };
+
+      const nextNotebooks = await importRemoteNotebooks(input);
+
+      setNotebooks(nextNotebooks);
+      setActiveNotebookId(nextNotebooks[0]?.id ?? "");
+
+      setPendingImport(null);
+    } catch {
+      window.alert("Could not import notebooks.");
+    } finally {
+      setIsImporting(false);
     }
   }
 
@@ -610,6 +659,20 @@ export default function NotebookApp() {
             </button>
           </div>
         </section>
+      )}
+      {pendingImport && (
+        <ImportNotebookDialog
+          fileName={pendingImport.fileName}
+          notebookCount={pendingImport.notebooks.length}
+          cellCount={pendingImport.notebooks.reduce(
+            (total, notebook) => total + notebook.cells.length,
+            0,
+          )}
+          isImporting={isImporting}
+          onAppend={() => confirmNotebookImport("append")}
+          onReplace={() => confirmNotebookImport("replace")}
+          onCancel={() => setPendingImport(null)}
+        />
       )}
     </main>
   );
