@@ -3,6 +3,11 @@ import type {
   CreateCellInput,
   CreateNotebookInput,
   DrawingCell,
+  ImportedCell,
+  ImportedDrawingCell,
+  ImportedNotebook,
+  ImportedTextCell,
+  ImportNotebooksInput,
   Notebook,
   NotebookCell,
   NotebookExport,
@@ -224,4 +229,61 @@ export function isReorderNotebooksInput(
   const uniqueNotebookIds = new Set(value.notebookIds);
 
   return allIdsAreUuids && uniqueNotebookIds.size === value.notebookIds.length;
+}
+
+export function isImportedTextCell(value: unknown): value is ImportedTextCell {
+  if (!isRecord(value)) return false;
+  return (
+    value.type === "text" &&
+    typeof value.content === "string" &&
+    typeof value.heightPx === "number" &&
+    Number.isFinite(value.heightPx) &&
+    value.heightPx >= 120 &&
+    value.heightPx <= 720
+  );
+}
+
+export function isImportedDrawingCell(
+  value: unknown,
+): value is ImportedDrawingCell {
+  if (!isRecord(value)) return false;
+  return (
+    value.type === "drawing" &&
+    (typeof value.drawing === "string" || value.drawing === null) &&
+    typeof value.heightPx === "number" &&
+    Number.isFinite(value.heightPx) &&
+    value.heightPx >= 120 &&
+    value.heightPx <= 720
+  );
+}
+
+export function isImportedCell(value: unknown): value is ImportedCell {
+  return isImportedTextCell(value) || isImportedDrawingCell(value);
+}
+
+function isImportedNotebook(value: unknown): value is ImportedNotebook {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.title === "string" &&
+    Array.isArray(value.cells) &&
+    value.cells.every(isImportedCell)
+  );
+}
+
+export function isImportNotebooksInput(
+  value: unknown,
+): value is ImportNotebooksInput {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    (value.mode === "append" || value.mode === "replace") &&
+    Array.isArray(value.notebooks) &&
+    value.notebooks.every(isImportedNotebook) &&
+    value.notebooks.length > 0
+  );
 }
