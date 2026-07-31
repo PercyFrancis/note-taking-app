@@ -33,7 +33,6 @@ import {
   applyDrawingCellUpdate,
   applyNotebookUpdate,
   applyTextCellUpdate,
-  createDefaultNotebook,
   deleteCell,
   insertCellAfter,
   moveCellDown,
@@ -446,14 +445,26 @@ export default function NotebookApp() {
     }
   }
 
-  const [notebooks, setNotebooks] = useState<Notebook[]>(() => {
-    const notebook = createDefaultNotebook();
-    return [notebook];
-  });
+  const [notebooks, setNotebooks] = useState<Notebook[]>([]);
+  const [activeNotebookId, setActiveNotebookId] = useState("");
+  const [isLoadingNotebooks, setIsLoadingNotebooks] = useState(true);
 
-  const [activeNotebookId, setActiveNotebookId] = useState<string>(() => {
-    return notebooks[0].id;
-  });
+  useEffect(() => {
+    async function loadNotebooks() {
+      try {
+        const remoteNotebooks = await loadRemoteNotebooks();
+
+        setNotebooks(remoteNotebooks);
+        setActiveNotebookId(remoteNotebooks[0]?.id ?? "");
+      } catch {
+        window.alert("Could not load notebooks from the server.");
+      } finally {
+        setIsLoadingNotebooks(false);
+      }
+    }
+
+    loadNotebooks();
+  }, []);
 
   function exportNotebooks() {
     const exportData = createNotebookExport(notebooks);
@@ -593,20 +604,13 @@ export default function NotebookApp() {
   );
   const [focusedCellId, setFocusedCellId] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function loadNotebooks() {
-      try {
-        const remoteNotebooks = await loadRemoteNotebooks();
-
-        setNotebooks(remoteNotebooks);
-        setActiveNotebookId(remoteNotebooks[0]?.id ?? "");
-      } catch {
-        window.alert("Could not load notebooks from the server.");
-      }
-    }
-
-    loadNotebooks();
-  }, []);
+  if (isLoadingNotebooks) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-slate-100">
+        <p className="text-sm text-slate-500">Loading notebooks...</p>
+      </main>
+    );
+  }
 
   return (
     <main className="flex min-h-screen flex-col bg-slate-100 text-slate-950 md:flex-row">
