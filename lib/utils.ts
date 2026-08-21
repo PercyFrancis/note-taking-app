@@ -4,6 +4,7 @@ import type {
   NotebookCell,
   NotebookUpdate,
   TextCell,
+  TextCellMatch,
 } from "./types";
 
 export function applyNotebookUpdate(
@@ -191,6 +192,91 @@ export function moveCellDown(
 
 export function normalizeSearchText(value: string): string {
   return value.trim().toLowerCase();
+}
+
+export function findTextCellMatches(
+  cells: NotebookCell[],
+  query: string,
+): TextCellMatch[] {
+  if (query === "") {
+    return [];
+  }
+
+  const normalizedQuery = query.toLocaleLowerCase();
+  const matches: TextCellMatch[] = [];
+
+  for (const cell of cells) {
+    if (cell.type !== "text") {
+      continue;
+    }
+
+    const normalizedContent = cell.content.toLocaleLowerCase();
+    let searchFrom = 0;
+
+    while (searchFrom <= normalizedContent.length - normalizedQuery.length) {
+      const start = normalizedContent.indexOf(normalizedQuery, searchFrom);
+
+      if (start === -1) {
+        break;
+      }
+
+      matches.push({
+        cellId: cell.id,
+        start,
+        end: start + query.length,
+      });
+      searchFrom = start + query.length;
+    }
+  }
+
+  return matches;
+}
+
+export function replaceTextMatch(
+  content: string,
+  match: Pick<TextCellMatch, "start" | "end">,
+  replacement: string,
+): string {
+  return `${content.slice(0, match.start)}${replacement}${content.slice(match.end)}`;
+}
+
+export function replaceAllTextMatches(
+  cells: NotebookCell[],
+  query: string,
+  replacement: string,
+): Map<string, string> {
+  const matches = findTextCellMatches(cells, query);
+  const matchesByCell = new Map<string, TextCellMatch[]>();
+
+  for (const match of matches) {
+    const cellMatches = matchesByCell.get(match.cellId) ?? [];
+    cellMatches.push(match);
+    matchesByCell.set(match.cellId, cellMatches);
+  }
+
+  const updates = new Map<string, string>();
+
+  for (const cell of cells) {
+    if (cell.type !== "text") {
+      continue;
+    }
+
+    const cellMatches = matchesByCell.get(cell.id);
+
+    if (!cellMatches) {
+      continue;
+    }
+
+    let nextContent = cell.content;
+
+    for (const match of [...cellMatches].reverse()) {
+      nextContent = replaceTextMatch(nextContent, match, replacement);
+    }
+
+    updates.set(cell.id, nextContent);
+  }
+
+  return updates;
 }
 
 export function notebookMatchesSearch(

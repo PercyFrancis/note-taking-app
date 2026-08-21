@@ -1,7 +1,14 @@
 "use client";
+import { useEffect, useRef, useState } from "react";
 import CellList from "@/components/notebook/CellList";
+import NotebookFindReplace from "@/components/notebook/NotebookFindReplace";
 import NotebookToolbar from "@/components/notebook/NotebookToolbar";
-import type { Notebook, NotebookUpdate } from "@/lib/types";
+import type {
+  Notebook,
+  NotebookUpdate,
+  TextCellMatch,
+  TextSelectionRequest,
+} from "@/lib/types";
 
 interface NotebookEditorProps {
   notebook: Notebook;
@@ -10,6 +17,7 @@ interface NotebookEditorProps {
   onAddTextCell: () => void;
   onAddDrawingCell: () => void;
   onUpdateTextCell: (cellId: string, content: string) => void;
+  onUpdateTextCells: (updates: ReadonlyMap<string, string>) => void;
   onUpdateDrawingCell: (cellId: string, drawing: string | null) => void;
   onUpdateCellHeight: (cellId: string, heightPx: number) => void;
   onAddTextCellAfter: (cellId: string) => void;
@@ -31,6 +39,7 @@ export default function NotebookEditor({
   onAddTextCell,
   onAddDrawingCell,
   onUpdateTextCell,
+  onUpdateTextCells,
   onUpdateDrawingCell,
   onUpdateCellHeight,
   onAddTextCellAfter,
@@ -44,6 +53,53 @@ export default function NotebookEditor({
   onExportNotebooks,
   onImportNotebooks,
 }: NotebookEditorProps) {
+  const [isFindOpen, setIsFindOpen] = useState(false);
+  const [findFocusRequestId, setFindFocusRequestId] = useState(0);
+  const [findQuery, setFindQuery] = useState("");
+  const [textSelection, setTextSelection] =
+    useState<TextSelectionRequest | null>(null);
+  const selectionRequestIdRef = useRef(0);
+
+  function openFind() {
+    setIsFindOpen(true);
+    setFindFocusRequestId((currentRequestId) => currentRequestId + 1);
+  }
+
+  function closeFind() {
+    setIsFindOpen(false);
+    setFindQuery("");
+    setTextSelection(null);
+  }
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        setIsFindOpen(true);
+        setFindFocusRequestId((currentRequestId) => currentRequestId + 1);
+        return;
+      }
+
+      if (event.key === "Escape" && isFindOpen) {
+        event.preventDefault();
+        setIsFindOpen(false);
+        setFindQuery("");
+        setTextSelection(null);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isFindOpen]);
+
+  function navigateToMatch(match: TextCellMatch) {
+    selectionRequestIdRef.current += 1;
+    setTextSelection({
+      ...match,
+      requestId: selectionRequestIdRef.current,
+    });
+  }
+
   return (
     <section className="flex min-w-0 flex-1 flex-col">
       <header className="border-b border-slate-200 bg-white px-4 py-4 md:px-8">
@@ -61,14 +117,33 @@ export default function NotebookEditor({
           <NotebookToolbar
             onAddTextCell={onAddTextCell}
             onAddDrawingCell={onAddDrawingCell}
+            onOpenFind={openFind}
             onExportNotebooks={onExportNotebooks}
             onImportNotebooks={onImportNotebooks}
           />
         </div>
       </header>
+      {isFindOpen && (
+        <NotebookFindReplace
+          key={notebook.id}
+          cells={notebook.cells}
+          focusRequestId={findFocusRequestId}
+          query={findQuery}
+          onQueryChange={(query) => {
+            setFindQuery(query);
+            setTextSelection(null);
+          }}
+          onUpdateTextCell={onUpdateTextCell}
+          onUpdateTextCells={onUpdateTextCells}
+          onNavigate={navigateToMatch}
+          onClose={closeFind}
+        />
+      )}
       <CellList
         cells={notebook.cells}
         focusedCellId={focusedCellId}
+        findQuery={findQuery}
+        textSelection={textSelection}
         onUpdateTextCell={onUpdateTextCell}
         onUpdateDrawingCell={onUpdateDrawingCell}
         onUpdateCellHeight={onUpdateCellHeight}

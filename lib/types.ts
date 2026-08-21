@@ -20,6 +20,16 @@ export interface DrawingCell extends BaseCell {
 
 export type NotebookCell = TextCell | DrawingCell;
 
+export interface TextCellMatch {
+  cellId: string;
+  start: number;
+  end: number;
+}
+
+export interface TextSelectionRequest extends TextCellMatch {
+  requestId: number;
+}
+
 export interface Notebook {
   id: string;
   title: string;

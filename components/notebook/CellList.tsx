@@ -1,11 +1,13 @@
 import { DragDropProvider } from "@dnd-kit/react";
 import { isSortable } from "@dnd-kit/react/sortable";
 import CellFrame from "@/components/notebook/CellFrame";
-import type { NotebookCell } from "@/lib/types";
+import type { NotebookCell, TextSelectionRequest } from "@/lib/types";
 
 interface CellListProps {
   cells: NotebookCell[];
   focusedCellId: string | null;
+  findQuery: string;
+  textSelection: TextSelectionRequest | null;
   onUpdateTextCell: (cellId: string, content: string) => void;
   onUpdateDrawingCell: (cellId: string, drawing: string | null) => void;
   onUpdateCellHeight: (cellId: string, heightPx: number) => void;
@@ -22,6 +24,8 @@ interface CellListProps {
 export default function CellList({
   cells,
   focusedCellId,
+  findQuery,
+  textSelection,
   onUpdateTextCell,
   onUpdateDrawingCell,
   onUpdateCellHeight,
@@ -57,6 +61,10 @@ export default function CellList({
             cell={cell}
             index={index}
             focusedCellId={focusedCellId}
+            findQuery={findQuery}
+            textSelection={
+              textSelection?.cellId === cell.id ? textSelection : null
+            }
             onUpdateTextCell={onUpdateTextCell}
             onUpdateDrawingCell={onUpdateDrawingCell}
             onUpdateCellHeight={onUpdateCellHeight}

@@ -246,6 +246,26 @@ export default function NotebookApp() {
     queueCellSave(cellId, { content });
   }
 
+  function updateTextCells(updates: ReadonlyMap<string, string>) {
+    if (!activeNotebook || updates.size === 0) {
+      return;
+    }
+
+    updateNotebook({
+      cells: activeNotebook.cells.map((cell) => {
+        const content = updates.get(cell.id);
+
+        return cell.type === "text" && content !== undefined
+          ? applyTextCellUpdate(cell, content)
+          : cell;
+      }),
+    });
+
+    for (const [cellId, content] of updates) {
+      queueCellSave(cellId, { content });
+    }
+  }
+
   function updateDrawingCell(cellId: string, drawing: string | null) {
     if (!activeNotebook) {
       return;
@@ -631,6 +651,7 @@ export default function NotebookApp() {
           onUpdateNotebook={updateNotebook}
           onAddTextCell={addTextCell}
           onUpdateTextCell={updateTextCell}
+          onUpdateTextCells={updateTextCells}
           onAddDrawingCell={addDrawingCell}
           onUpdateDrawingCell={updateDrawingCell}
           onUpdateCellHeight={updateCellHeight}

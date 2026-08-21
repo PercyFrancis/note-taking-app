@@ -9,6 +9,7 @@ import {
 interface NotebookToolbarProps {
   onAddTextCell: () => void;
   onAddDrawingCell: () => void;
+  onOpenFind: () => void;
   onExportNotebooks: () => void;
   onImportNotebooks: (file: File) => void;
 }
@@ -16,6 +17,7 @@ interface NotebookToolbarProps {
 export default function NotebookToolbar({
   onAddTextCell,
   onAddDrawingCell,
+  onOpenFind,
   onExportNotebooks,
   onImportNotebooks,
 }: NotebookToolbarProps) {
@@ -37,6 +39,14 @@ export default function NotebookToolbar({
         className={primaryButtonClass}
       >
         Add drawing cell
+      </button>
+
+      <button
+        type="button"
+        onClick={onOpenFind}
+        className={secondaryButtonClass}
+      >
+        Find and replace
       </button>
 
       <button

@@ -5,12 +5,14 @@ import Markdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
-import type { TextCell } from "@/lib/types";
-import { countWords } from "@/lib/utils";
+import type { TextCell, TextSelectionRequest } from "@/lib/types";
+import { countWords, findTextCellMatches } from "@/lib/utils";
 
 interface TextCellEditorProps {
   cell: TextCell;
   shouldFocus: boolean;
+  findQuery: string;
+  textSelection: TextSelectionRequest | null;
   onChange: (content: string) => void;
   onFocusHandled: () => void;
 }
@@ -18,17 +20,99 @@ interface TextCellEditorProps {
 export default function TextCellEditor({
   cell,
   shouldFocus,
+  findQuery,
+  textSelection,
   onChange,
   onFocusHandled,
 }: TextCellEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const highlightLayerRef = useRef<HTMLDivElement | null>(null);
+  const activeMatchRef = useRef<HTMLElement | null>(null);
+  const handledSelectionRequestIdRef = useRef<number | null>(null);
   const [mode, setMode] = useState<"write" | "preview">("write");
+  const highlightMatches = findTextCellMatches([cell], findQuery);
   useEffect(() => {
     if (!shouldFocus) return;
 
     textareaRef.current?.focus();
     onFocusHandled();
   }, [shouldFocus, onFocusHandled]);
+
+  useEffect(() => {
+    if (!textSelection || textSelection.cellId !== cell.id) {
+      return;
+    }
+
+    if (handledSelectionRequestIdRef.current === textSelection.requestId) {
+      return;
+    }
+
+    if (mode !== "write") {
+      setMode("write");
+      return;
+    }
+
+    const textarea = textareaRef.current;
+
+    if (!textarea) {
+      return;
+    }
+
+    textarea.setSelectionRange(textSelection.start, textSelection.end);
+    textarea.scrollIntoView({ behavior: "smooth", block: "center" });
+
+    const activeMatch = activeMatchRef.current;
+
+    if (activeMatch) {
+      textarea.scrollTop = Math.max(
+        0,
+        activeMatch.offsetTop -
+          textarea.clientHeight / 2 +
+          activeMatch.offsetHeight / 2,
+      );
+
+      if (highlightLayerRef.current) {
+        highlightLayerRef.current.scrollTop = textarea.scrollTop;
+      }
+    }
+
+    handledSelectionRequestIdRef.current = textSelection.requestId;
+  }, [cell.id, mode, textSelection]);
+
+  function renderHighlightedContent() {
+    if (findQuery === "" || highlightMatches.length === 0) {
+      return cell.content;
+    }
+
+    const content: React.ReactNode[] = [];
+    let cursor = 0;
+
+    for (const match of highlightMatches) {
+      const isActive =
+        textSelection?.cellId === cell.id &&
+        textSelection.start === match.start &&
+        textSelection.end === match.end;
+
+      content.push(cell.content.slice(cursor, match.start));
+      content.push(
+        <mark
+          key={`${match.start}-${match.end}`}
+          ref={isActive ? activeMatchRef : undefined}
+          className={
+            isActive
+              ? "rounded-sm bg-orange-300/70 text-transparent ring-1 ring-orange-500"
+              : "rounded-sm bg-yellow-200/70 text-transparent"
+          }
+        >
+          {cell.content.slice(match.start, match.end)}
+        </mark>,
+      );
+      cursor = match.end;
+    }
+
+    content.push(cell.content.slice(cursor));
+    return content;
+  }
 
   const getModeButtonClass = (targetMode: "write" | "preview") => {
     const isActive = mode === targetMode;
@@ -65,15 +149,34 @@ export default function TextCellEditor({
         </button>
       </fieldset>
       {mode === "write" ? (
-        <textarea
-          value={cell.content}
-          ref={textareaRef}
-          onChange={(event) => onChange(event.target.value)}
-          placeholder="Write something..."
-          style={{ height: cell.heightPx }}
-          className="box-border block overflow-auto w-full resize-none rounded-md border border-slate-200 p-3 text-sm leading-6 text-slate-800 
-          outline-none focus-visible:border-slate-400 focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
-        />
+        <div className="relative" style={{ height: cell.heightPx }}>
+          {findQuery !== "" && (
+            <div
+              ref={highlightLayerRef}
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 z-10 box-border overflow-hidden whitespace-pre-wrap break-words rounded-md border border-transparent p-3 text-sm leading-6 text-transparent [overflow-wrap:break-word]"
+            >
+              {renderHighlightedContent()}
+            </div>
+          )}
+          <textarea
+            value={cell.content}
+            ref={textareaRef}
+            onChange={(event) => onChange(event.target.value)}
+            onScroll={(event) => {
+              if (!highlightLayerRef.current) {
+                return;
+              }
+
+              highlightLayerRef.current.scrollTop =
+                event.currentTarget.scrollTop;
+              highlightLayerRef.current.scrollLeft =
+                event.currentTarget.scrollLeft;
+            }}
+            placeholder="Write something..."
+            className="relative block h-full w-full resize-none overflow-auto rounded-md border border-slate-200 p-3 text-sm leading-6 text-slate-800 outline-none focus-visible:border-slate-400 focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
+          />
+        </div>
       ) : (
         <div
           style={{ height: cell.heightPx }}

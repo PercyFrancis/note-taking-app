@@ -5,12 +5,14 @@ import {
   smallDangerButtonClass,
   smallSecondaryButtonClass,
 } from "@/components/ui/buttonStyles";
-import type { NotebookCell } from "@/lib/types";
+import type { NotebookCell, TextSelectionRequest } from "@/lib/types";
 
 interface CellFrameProps {
   cell: NotebookCell;
   index: number;
   focusedCellId: string | null;
+  findQuery: string;
+  textSelection: TextSelectionRequest | null;
   onUpdateTextCell: (cellId: string, content: string) => void;
   onUpdateDrawingCell: (cellId: string, drawing: string | null) => void;
   onUpdateCellHeight: (cellId: string, heightPx: number) => void;
@@ -27,6 +29,8 @@ export default function CellFrame({
   cell,
   index,
   focusedCellId,
+  findQuery,
+  textSelection,
   onUpdateTextCell,
   onUpdateDrawingCell,
   onUpdateCellHeight,
@@ -171,8 +175,10 @@ export default function CellFrame({
       {cell.type === "text" ? (
         <TextCellEditor
           cell={cell}
+          findQuery={findQuery}
           onChange={(content) => onUpdateTextCell(cell.id, content)}
           shouldFocus={focusedCellId === cell.id}
+          textSelection={textSelection}
           onFocusHandled={onFocusedCellHandled}
         />
       ) : (
