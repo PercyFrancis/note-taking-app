@@ -220,6 +220,7 @@ export default function NotebookFindReplace({
             className={secondaryButtonClass}
             onClick={onClose}
             aria-label="Close find and replace"
+            title="Close find and replace (Escape)"
           >
             Close
           </button>

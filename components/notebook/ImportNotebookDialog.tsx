@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect } from "react";
 import { secondaryButtonClass } from "../ui/buttonStyles";
 
 interface ImportNotebookDialogProps {
@@ -19,6 +22,21 @@ export default function ImportNotebookDialog({
   onReplace,
   onCancel,
 }: ImportNotebookDialogProps) {
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape" || isImporting) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      onCancel();
+    }
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [isImporting, onCancel]);
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40
@@ -95,6 +113,7 @@ export default function ImportNotebookDialog({
             onClick={onCancel}
             disabled={isImporting}
             className={secondaryButtonClass}
+            title="Close import dialog (Escape)"
           >
             Cancel
           </button>

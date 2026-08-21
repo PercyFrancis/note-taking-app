@@ -6,6 +6,7 @@ import type { NotebookCell, TextSelectionRequest } from "@/lib/types";
 interface CellListProps {
   cells: NotebookCell[];
   focusedCellId: string | null;
+  selectedCellId: string | null;
   findQuery: string;
   textSelection: TextSelectionRequest | null;
   onUpdateTextCell: (cellId: string, content: string) => void;
@@ -17,6 +18,7 @@ interface CellListProps {
   onCopyCell: (cellId: string) => void | Promise<void>;
   onMoveCellUp: (cellId: string) => void;
   onMoveCellDown: (cellId: string) => void;
+  onSelectCell: (cellId: string) => void;
   onReorderCells: (fromIndex: number, toIndex: number) => void;
   onFocusedCellHandled: () => void;
 }
@@ -24,6 +26,7 @@ interface CellListProps {
 export default function CellList({
   cells,
   focusedCellId,
+  selectedCellId,
   findQuery,
   textSelection,
   onUpdateTextCell,
@@ -35,6 +38,7 @@ export default function CellList({
   onCopyCell,
   onMoveCellUp,
   onMoveCellDown,
+  onSelectCell,
   onReorderCells,
   onFocusedCellHandled,
 }: CellListProps) {
@@ -61,6 +65,7 @@ export default function CellList({
             cell={cell}
             index={index}
             focusedCellId={focusedCellId}
+            isSelected={selectedCellId === cell.id}
             findQuery={findQuery}
             textSelection={
               textSelection?.cellId === cell.id ? textSelection : null
@@ -74,6 +79,7 @@ export default function CellList({
             onCopyCell={onCopyCell}
             onMoveCellUp={onMoveCellUp}
             onMoveCellDown={onMoveCellDown}
+            onSelectCell={onSelectCell}
             onFocusedCellHandled={onFocusedCellHandled}
           />
         ))}

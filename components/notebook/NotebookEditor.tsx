@@ -32,6 +32,22 @@ interface NotebookEditorProps {
   onImportNotebooks: (file: File) => void;
 }
 
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+
+  return (
+    target.tagName === "TEXTAREA" ||
+    target.tagName === "INPUT" ||
+    target.isContentEditable
+  );
+}
+
+function getTargetCellId(target: EventTarget | null): string | null {
+  if (!(target instanceof HTMLElement)) return null;
+
+  return target.closest<HTMLElement>("[data-cell-id]")?.dataset.cellId ?? null;
+}
+
 export default function NotebookEditor({
   notebook,
   focusedCellId,
@@ -56,6 +72,7 @@ export default function NotebookEditor({
   const [isFindOpen, setIsFindOpen] = useState(false);
   const [findFocusRequestId, setFindFocusRequestId] = useState(0);
   const [findQuery, setFindQuery] = useState("");
+  const [selectedCellId, setSelectedCellId] = useState<string | null>(null);
   const [textSelection, setTextSelection] =
     useState<TextSelectionRequest | null>(null);
   const selectionRequestIdRef = useRef(0);
@@ -73,6 +90,10 @@ export default function NotebookEditor({
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) {
+        return;
+      }
+
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
         event.preventDefault();
         setIsFindOpen(true);
@@ -85,14 +106,83 @@ export default function NotebookEditor({
         setIsFindOpen(false);
         setFindQuery("");
         setTextSelection(null);
+        return;
+      }
+
+      if (!selectedCellId) {
+        return;
+      }
+
+      const isModifierPressed = event.ctrlKey || event.metaKey;
+      const isTypingInEditableElement = isEditableTarget(event.target);
+      const targetCellId = getTargetCellId(event.target);
+
+      if (isTypingInEditableElement && targetCellId !== selectedCellId) {
+        return;
+      }
+
+      if (event.altKey && !isModifierPressed && !isTypingInEditableElement) {
+        if (event.key === "ArrowUp") {
+          event.preventDefault();
+          onMoveCellUp(selectedCellId);
+          return;
+        }
+
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          onMoveCellDown(selectedCellId);
+          return;
+        }
+      }
+
+      if (!isModifierPressed) {
+        return;
+      }
+
+      if (event.key === "Enter" && event.shiftKey) {
+        event.preventDefault();
+        onCopyCell(selectedCellId);
+        return;
+      }
+
+      if (event.key === "Enter") {
+        event.preventDefault();
+        onAddTextCellAfter(selectedCellId);
+        return;
+      }
+
+      if (event.key === "Backspace" && !isTypingInEditableElement) {
+        event.preventDefault();
+
+        if (window.confirm("Delete this cell?")) {
+          onRemoveCell(selectedCellId);
+        }
       }
     }
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isFindOpen]);
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [
+    isFindOpen,
+    selectedCellId,
+    onAddTextCellAfter,
+    onCopyCell,
+    onMoveCellDown,
+    onMoveCellUp,
+    onRemoveCell,
+  ]);
+
+  useEffect(() => {
+    if (
+      selectedCellId &&
+      !notebook.cells.some((cell) => cell.id === selectedCellId)
+    ) {
+      setSelectedCellId(null);
+    }
+  }, [notebook.cells, selectedCellId]);
 
   function navigateToMatch(match: TextCellMatch) {
+    setSelectedCellId(match.cellId);
     selectionRequestIdRef.current += 1;
     setTextSelection({
       ...match,
@@ -142,6 +232,7 @@ export default function NotebookEditor({
       <CellList
         cells={notebook.cells}
         focusedCellId={focusedCellId}
+        selectedCellId={selectedCellId}
         findQuery={findQuery}
         textSelection={textSelection}
         onUpdateTextCell={onUpdateTextCell}
@@ -153,6 +244,7 @@ export default function NotebookEditor({
         onCopyCell={onCopyCell}
         onMoveCellUp={onMoveCellUp}
         onMoveCellDown={onMoveCellDown}
+        onSelectCell={setSelectedCellId}
         onReorderCells={onReorderCells}
         onFocusedCellHandled={onFocusedCellHandled}
       />

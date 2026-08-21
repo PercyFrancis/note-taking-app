@@ -11,6 +11,7 @@ interface CellFrameProps {
   cell: NotebookCell;
   index: number;
   focusedCellId: string | null;
+  isSelected: boolean;
   findQuery: string;
   textSelection: TextSelectionRequest | null;
   onUpdateTextCell: (cellId: string, content: string) => void;
@@ -22,6 +23,7 @@ interface CellFrameProps {
   onCopyCell: (cellId: string) => void | Promise<void>;
   onMoveCellUp: (cellId: string) => void;
   onMoveCellDown: (cellId: string) => void;
+  onSelectCell: (cellId: string) => void;
   onFocusedCellHandled: () => void;
 }
 
@@ -29,6 +31,7 @@ export default function CellFrame({
   cell,
   index,
   focusedCellId,
+  isSelected,
   findQuery,
   textSelection,
   onUpdateTextCell,
@@ -40,58 +43,38 @@ export default function CellFrame({
   onCopyCell,
   onMoveCellUp,
   onMoveCellDown,
+  onSelectCell,
   onFocusedCellHandled,
 }: CellFrameProps) {
   const { ref, handleRef, isDragging } = useSortable({
     id: cell.id,
     index,
   });
-  function isEditableTarget(target: EventTarget | null): boolean {
-    if (!(target instanceof HTMLElement)) return false;
-
-    return (
-      target.tagName === "TEXTAREA" ||
-      target.tagName === "INPUT" ||
-      target.isContentEditable
-    );
-  }
-
-  function handleKeyDown(event: React.KeyboardEvent<HTMLElement>) {
-    const isModifierPressed = event.ctrlKey || event.metaKey;
-
-    if (!isModifierPressed) return;
-
-    const isTypingInEditableElement = isEditableTarget(event.target);
-
-    if (event.key === "Enter") {
-      event.preventDefault();
-      onAddTextCellAfter(cell.id);
-      return;
-    }
-
-    if (event.shiftKey && event.key.toLowerCase() === "d") {
-      event.preventDefault();
-      onAddDrawingCellAfter(cell.id);
-      return;
-    }
-
-    if (event.key === "Backspace" && !isTypingInEditableElement) {
-      event.preventDefault();
-
-      const shouldDelete = window.confirm("Delete this cell?");
-      if (shouldDelete) {
-        onRemoveCell(cell.id);
-      }
-    }
-  }
-
   return (
     <article
       ref={ref}
-      onKeyDown={handleKeyDown}
+      tabIndex={-1}
+      data-cell-id={cell.id}
+      data-selected={isSelected ? "true" : "false"}
+      onPointerDownCapture={(event) => {
+        onSelectCell(cell.id);
+
+        if (!(event.target instanceof HTMLElement)) {
+          return;
+        }
+
+        const interactiveTarget = event.target.closest(
+          "button, input, textarea, select, a, label, [contenteditable='true']",
+        );
+
+        if (!interactiveTarget) {
+          event.currentTarget.focus({ preventScroll: true });
+        }
+      }}
+      onFocusCapture={() => onSelectCell(cell.id)}
       className={`mb-4 rounded-lg border border-slate-200 bg-white p-4 ${
         isDragging ? "opacity-60 shadow-lg" : ""
-      }`}
+      } ${isSelected ? "ring-2 ring-sky-500 ring-offset-2" : ""}`}
     >
       <div className="mb-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-2 text-xs font-medium uppercase text-slate-400">
@@ -106,6 +89,11 @@ export default function CellFrame({
             Drag
           </button>
           {cell.type === "text" ? "Text cell" : "Drawing cell"}
+          {isSelected && (
+            <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] text-sky-700">
+              Selected
+            </span>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <label className="flex h-8 shrink-0 items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-2 text-xs text-slate-500">
@@ -129,6 +117,7 @@ export default function CellFrame({
               type="button"
               onClick={() => onAddTextCellAfter(cell.id)}
               className={smallSecondaryButtonClass}
+              title="Add text cell after this cell (Ctrl/Cmd + Enter)"
             >
               + Text
             </button>
@@ -144,6 +133,7 @@ export default function CellFrame({
               type="button"
               onClick={() => onMoveCellUp(cell.id)}
               className={smallSecondaryButtonClass}
+              title="Move cell up (Alt + Arrow Up)"
             >
               Up
             </button>
@@ -151,6 +141,7 @@ export default function CellFrame({
               type="button"
               onClick={() => onMoveCellDown(cell.id)}
               className={smallSecondaryButtonClass}
+              title="Move cell down (Alt + Arrow Down)"
             >
               Down
             </button>
@@ -158,6 +149,7 @@ export default function CellFrame({
               type="button"
               onClick={() => onCopyCell(cell.id)}
               className={smallSecondaryButtonClass}
+              title="Duplicate cell (Ctrl/Cmd + Shift + Enter)"
             >
               Copy
             </button>
@@ -165,6 +157,7 @@ export default function CellFrame({
               type="button"
               onClick={() => onRemoveCell(cell.id)}
               className={smallDangerButtonClass}
+              title="Delete cell (Ctrl/Cmd + Backspace)"
             >
               Delete
             </button>

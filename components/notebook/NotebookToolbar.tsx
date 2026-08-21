@@ -45,6 +45,7 @@ export default function NotebookToolbar({
         type="button"
         onClick={onOpenFind}
         className={secondaryButtonClass}
+        title="Find and replace (Ctrl/Cmd + F)"
       >
         Find and replace
       </button>

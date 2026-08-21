@@ -120,7 +120,9 @@ Avoid replacing text in drawing cells.
 
 Also be careful with markdown syntax. A simple replace can modify URLs, table syntax, code blocks, or image links. That is acceptable for a first version, but it should be understood.
 
-## 2. Common Shortcuts
+## 2. Common Shortcuts (Implemented)
+
+See [KEYBOARD_SHORTCUTS.md](./KEYBOARD_SHORTCUTS.md) for the complete implemented shortcut reference, proposed additions, browser-conflict guidance, and implementation rules.
 
 ### Why This Should Come Early
 
@@ -139,14 +141,32 @@ focus search
 
 Shortcuts can call those existing functions.
 
-### Suggested Scope
+### Shortcut Reference
+
+Use `Ctrl` on Windows/Linux and `Cmd` on macOS.
+
+| Shortcut | Action | Where It Works |
+|---|---|---|
+| `Ctrl/Cmd + F` | Open or refocus find and replace | Anywhere in the active notebook |
+| `Ctrl/Cmd + Enter` | Add a text cell after the current cell | While focus is inside a cell, including its text editor |
+| `Ctrl/Cmd + Shift + Enter` | Duplicate the selected cell | After selecting a cell, including while typing in its text editor |
+| `Ctrl/Cmd + Backspace` | Delete the current cell after confirmation | While focus is inside a cell, but not while typing in an input or textarea |
+| `Alt + ArrowUp` | Move the current cell up | While focus is inside a cell, but not while typing in an input or textarea |
+| `Alt + ArrowDown` | Move the current cell down | While focus is inside a cell, but not while typing in an input or textarea |
+| `Escape` | Close find and replace or the import dialog | While the applicable overlay or dialog is open |
+
+Click anywhere in a cell, or focus one of its controls, to select it. The selected cell has a blue outline and remains selected until another cell is chosen. Cell shortcuts act on this selection.
+
+The delete and move shortcuts deliberately do not run while typing. This preserves native word deletion, cursor movement, and text-selection behavior. Duplicate uses `Ctrl/Cmd + Shift + Enter` instead of `Ctrl/Cmd + Shift + D`, because Chrome reserves the latter for bookmarking all open tabs. Shortcut hints also appear in the relevant button tooltips.
+
+### Implemented Scope
 
 Start with:
 
 ```text
 Ctrl/Cmd + F -> open find bar
 Ctrl/Cmd + Enter -> add text cell after current cell
-Ctrl/Cmd + Shift + D -> duplicate current cell
+Ctrl/Cmd + Shift + Enter -> duplicate selected cell
 Ctrl/Cmd + Backspace -> delete current cell after confirmation
 Alt + ArrowUp -> move current cell up
 Alt + ArrowDown -> move current cell down
