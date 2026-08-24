@@ -13,6 +13,7 @@ import {
   loadRemoteNotebooks,
   reorderRemoteCells,
   reorderRemoteNotebooks,
+  restoreRemoteCell,
   updateRemoteCell,
   updateRemoteNotebook,
 } from "@/lib/client/notebook-api";
@@ -43,6 +44,30 @@ import {
 import { primaryButtonClass } from "../ui/buttonStyles";
 import ImportNotebookDialog from "./ImportNotebookDialog";
 
+const STRUCTURAL_HISTORY_LIMIT = 50;
+
+type CellPresenceHistoryEntry = {
+  kind: "cell-presence";
+  label: string;
+  cell: NotebookCell;
+  position: number;
+  presentBefore: boolean;
+};
+
+type CellOrderHistoryEntry = {
+  kind: "cell-order";
+  label: string;
+  beforeCellIds: string[];
+  afterCellIds: string[];
+};
+
+type StructuralHistoryEntry = CellPresenceHistoryEntry | CellOrderHistoryEntry;
+
+type NotebookHistory = {
+  undo: StructuralHistoryEntry[];
+  redo: StructuralHistoryEntry[];
+};
+
 export default function NotebookApp() {
   async function createNotebook() {
     try {
@@ -66,6 +91,11 @@ export default function NotebookApp() {
 
     try {
       await deleteRemoteNotebook(id);
+
+      setHistoryByNotebook((currentHistory) => {
+        const { [id]: _deletedHistory, ...remainingHistory } = currentHistory;
+        return remainingHistory;
+      });
 
       setNotebooks((currentNotebooks) => {
         const remaining = currentNotebooks.filter(
@@ -116,6 +146,14 @@ export default function NotebookApp() {
         cells: [...activeNotebook.cells, newCell],
       });
 
+      recordStructuralHistory(activeNotebook.id, {
+        kind: "cell-presence",
+        label: "Add text cell",
+        cell: newCell,
+        position: activeNotebook.cells.length,
+        presentBefore: false,
+      });
+
       setFocusedCellId(newCell.id);
     } catch {
       window.alert("Could not create text cell.");
@@ -134,6 +172,14 @@ export default function NotebookApp() {
 
       updateNotebook({
         cells: [...activeNotebook.cells, newCell],
+      });
+
+      recordStructuralHistory(activeNotebook.id, {
+        kind: "cell-presence",
+        label: "Add drawing cell",
+        cell: newCell,
+        position: activeNotebook.cells.length,
+        presentBefore: false,
       });
     } catch {
       window.alert("Could not create drawing cell.");
@@ -309,6 +355,15 @@ export default function NotebookApp() {
         cells: insertCellAfter(activeNotebook.cells, cellId, newCell),
       });
 
+      recordStructuralHistory(activeNotebook.id, {
+        kind: "cell-presence",
+        label: "Add text cell",
+        cell: newCell,
+        position:
+          activeNotebook.cells.findIndex((cell) => cell.id === cellId) + 1,
+        presentBefore: false,
+      });
+
       setFocusedCellId(newCell.id);
     } catch {
       window.alert("Could not create text cell.");
@@ -328,6 +383,15 @@ export default function NotebookApp() {
 
       updateNotebook({
         cells: insertCellAfter(activeNotebook.cells, cellId, newCell),
+      });
+
+      recordStructuralHistory(activeNotebook.id, {
+        kind: "cell-presence",
+        label: "Add drawing cell",
+        cell: newCell,
+        position:
+          activeNotebook.cells.findIndex((cell) => cell.id === cellId) + 1,
+        presentBefore: false,
       });
     } catch {
       window.alert("Could not create drawing cell.");
@@ -359,6 +423,15 @@ export default function NotebookApp() {
       return;
     }
 
+    const position = activeNotebook.cells.findIndex(
+      (cell) => cell.id === cellId,
+    );
+    const deletedCell = activeNotebook.cells[position];
+
+    if (!deletedCell || position < 0) {
+      return;
+    }
+
     try {
       await deleteRemoteCell(cellId);
       clearQueuedCellSave(cellId);
@@ -367,6 +440,14 @@ export default function NotebookApp() {
 
       updateNotebook({
         cells: nextCells,
+      });
+
+      recordStructuralHistory(activeNotebook.id, {
+        kind: "cell-presence",
+        label: "Delete cell",
+        cell: deletedCell,
+        position,
+        presentBefore: true,
       });
     } catch {
       window.alert("Could not delete cell.");
@@ -386,12 +467,21 @@ export default function NotebookApp() {
       updateNotebook({
         cells: insertCellAfter(activeNotebook.cells, cellId, copiedCell),
       });
+
+      recordStructuralHistory(activeNotebook.id, {
+        kind: "cell-presence",
+        label: "Duplicate cell",
+        cell: copiedCell,
+        position:
+          activeNotebook.cells.findIndex((cell) => cell.id === cellId) + 1,
+        presentBefore: false,
+      });
     } catch {
       window.alert("Could not copy cell.");
     }
   }
 
-  function moveCellEarlier(cellId: string) {
+  async function moveCellEarlier(cellId: string) {
     if (!activeNotebook) {
       return;
     }
@@ -402,14 +492,10 @@ export default function NotebookApp() {
       return;
     }
 
-    updateNotebook({
-      cells: nextCells,
-    });
-
-    saveCellOrder(nextCells);
+    await persistCellOrderChange(activeNotebook, nextCells, "Move cell up");
   }
 
-  function moveCellLater(cellId: string) {
+  async function moveCellLater(cellId: string) {
     if (!activeNotebook) {
       return;
     }
@@ -420,14 +506,10 @@ export default function NotebookApp() {
       return;
     }
 
-    updateNotebook({
-      cells: nextCells,
-    });
-
-    saveCellOrder(nextCells);
+    await persistCellOrderChange(activeNotebook, nextCells, "Move cell down");
   }
 
-  function reorderCells(fromIndex: number, toIndex: number) {
+  async function reorderCells(fromIndex: number, toIndex: number) {
     if (!activeNotebook) {
       return;
     }
@@ -438,11 +520,7 @@ export default function NotebookApp() {
       return;
     }
 
-    updateNotebook({
-      cells: nextCells,
-    });
-
-    saveCellOrder(nextCells);
+    await persistCellOrderChange(activeNotebook, nextCells, "Reorder cells");
   }
 
   async function flushQueuedCellSave(cellId: string) {
@@ -468,6 +546,12 @@ export default function NotebookApp() {
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
   const [activeNotebookId, setActiveNotebookId] = useState("");
   const [isLoadingNotebooks, setIsLoadingNotebooks] = useState(true);
+  const [historyByNotebook, setHistoryByNotebook] = useState<
+    Record<string, NotebookHistory>
+  >({});
+  const [isHistoryBusy, setIsHistoryBusy] = useState(false);
+  const historyBusyRef = useRef(false);
+  const pendingCellOrderNotebookIdsRef = useRef(new Set<string>());
 
   useEffect(() => {
     async function loadNotebooks() {
@@ -562,26 +646,13 @@ export default function NotebookApp() {
 
       setNotebooks(nextNotebooks);
       setActiveNotebookId(nextNotebooks[0]?.id ?? "");
+      setHistoryByNotebook({});
 
       setPendingImport(null);
     } catch {
       window.alert("Could not import notebooks.");
     } finally {
       setIsImporting(false);
-    }
-  }
-
-  async function saveCellOrder(cells: NotebookCell[]) {
-    if (!activeNotebook) {
-      return;
-    }
-
-    try {
-      await reorderRemoteCells(activeNotebook.id, {
-        cellIds: cells.map((cell) => cell.id),
-      });
-    } catch {
-      window.alert("Could not save cell order.");
     }
   }
 
@@ -617,6 +688,204 @@ export default function NotebookApp() {
 
   const activeNotebook =
     notebooks.find((notebook) => notebook.id === activeNotebookId) ?? null;
+
+  function recordStructuralHistory(
+    notebookId: string,
+    entry: StructuralHistoryEntry,
+  ) {
+    setHistoryByNotebook((currentHistory) => {
+      const notebookHistory = currentHistory[notebookId] ?? {
+        undo: [],
+        redo: [],
+      };
+
+      return {
+        ...currentHistory,
+        [notebookId]: {
+          undo: [...notebookHistory.undo, entry].slice(
+            -STRUCTURAL_HISTORY_LIMIT,
+          ),
+          redo: [],
+        },
+      };
+    });
+  }
+
+  async function persistCellOrderChange(
+    notebook: Notebook,
+    nextCells: NotebookCell[],
+    label: string,
+  ) {
+    if (pendingCellOrderNotebookIdsRef.current.has(notebook.id)) {
+      return;
+    }
+
+    const beforeCellIds = notebook.cells.map((cell) => cell.id);
+    const afterCellIds = nextCells.map((cell) => cell.id);
+    pendingCellOrderNotebookIdsRef.current.add(notebook.id);
+
+    try {
+      await reorderRemoteCells(notebook.id, { cellIds: afterCellIds });
+
+      setNotebooks((currentNotebooks) =>
+        currentNotebooks.map((currentNotebook) => {
+          if (currentNotebook.id !== notebook.id) {
+            return currentNotebook;
+          }
+
+          const cellsById = new Map(
+            currentNotebook.cells.map((cell) => [cell.id, cell]),
+          );
+
+          return {
+            ...currentNotebook,
+            cells: afterCellIds.flatMap((cellId) => {
+              const cell = cellsById.get(cellId);
+              return cell ? [cell] : [];
+            }),
+          };
+        }),
+      );
+
+      recordStructuralHistory(notebook.id, {
+        kind: "cell-order",
+        label,
+        beforeCellIds,
+        afterCellIds,
+      });
+    } catch {
+      window.alert("Could not save cell order.");
+    } finally {
+      pendingCellOrderNotebookIdsRef.current.delete(notebook.id);
+    }
+  }
+
+  async function applyStructuralHistory(direction: "undo" | "redo") {
+    if (!activeNotebook || historyBusyRef.current) {
+      return;
+    }
+
+    const notebookId = activeNotebook.id;
+    const notebookHistory = historyByNotebook[notebookId];
+    const sourceStack = notebookHistory?.[direction] ?? [];
+    const entry = sourceStack.at(-1);
+
+    if (!entry) {
+      return;
+    }
+
+    historyBusyRef.current = true;
+    setIsHistoryBusy(true);
+
+    try {
+      let nextCells: NotebookCell[];
+      let nextEntry = entry;
+
+      if (entry.kind === "cell-order") {
+        const targetIds =
+          direction === "undo" ? entry.beforeCellIds : entry.afterCellIds;
+        const cellsById = new Map(
+          activeNotebook.cells.map((cell) => [cell.id, cell]),
+        );
+        nextCells = targetIds.flatMap((cellId) => {
+          const cell = cellsById.get(cellId);
+          return cell ? [cell] : [];
+        });
+
+        if (nextCells.length !== activeNotebook.cells.length) {
+          throw new Error("Cell history no longer matches the notebook");
+        }
+
+        await reorderRemoteCells(notebookId, { cellIds: targetIds });
+      } else {
+        const shouldBePresent =
+          direction === "undo" ? entry.presentBefore : !entry.presentBefore;
+        const currentPosition = activeNotebook.cells.findIndex(
+          (cell) => cell.id === entry.cell.id,
+        );
+
+        if (shouldBePresent) {
+          if (currentPosition >= 0) {
+            throw new Error("Cell is already present");
+          }
+
+          const position = Math.min(
+            entry.position,
+            activeNotebook.cells.length,
+          );
+          const restoredCell = await restoreRemoteCell(notebookId, {
+            cell: entry.cell,
+            position,
+          });
+          nextCells = [...activeNotebook.cells];
+          nextCells.splice(position, 0, restoredCell);
+          nextEntry = { ...entry, cell: restoredCell, position };
+          setFocusedCellId(restoredCell.id);
+        } else {
+          if (currentPosition < 0) {
+            throw new Error("Cell is already absent");
+          }
+
+          const currentCell = activeNotebook.cells[currentPosition];
+          await flushQueuedCellSave(currentCell.id);
+          await deleteRemoteCell(currentCell.id);
+          clearQueuedCellSave(currentCell.id);
+          nextCells = deleteCell(activeNotebook.cells, currentCell.id);
+          nextEntry = {
+            ...entry,
+            cell: currentCell,
+            position: currentPosition,
+          };
+        }
+      }
+
+      setNotebooks((currentNotebooks) =>
+        currentNotebooks.map((notebook) =>
+          notebook.id === notebookId
+            ? { ...notebook, cells: nextCells }
+            : notebook,
+        ),
+      );
+
+      setHistoryByNotebook((currentHistory) => {
+        const currentNotebookHistory = currentHistory[notebookId];
+
+        if (!currentNotebookHistory) {
+          return currentHistory;
+        }
+
+        const destination = direction === "undo" ? "redo" : "undo";
+
+        return {
+          ...currentHistory,
+          [notebookId]: {
+            ...currentNotebookHistory,
+            [direction]: currentNotebookHistory[direction].slice(0, -1),
+            [destination]: [
+              ...currentNotebookHistory[destination],
+              nextEntry,
+            ].slice(-STRUCTURAL_HISTORY_LIMIT),
+          },
+        };
+      });
+    } catch {
+      window.alert(
+        direction === "undo"
+          ? "Could not undo the last action."
+          : "Could not redo the last action.",
+      );
+    } finally {
+      historyBusyRef.current = false;
+      setIsHistoryBusy(false);
+    }
+  }
+
+  const activeHistory = historyByNotebook[activeNotebookId] ?? {
+    undo: [],
+    redo: [],
+  };
+  const nextUndoLabel = activeHistory.undo.at(-1)?.label ?? null;
+  const nextRedoLabel = activeHistory.redo.at(-1)?.label ?? null;
 
   const [searchQuery, setSearchQuery] = useState("");
   const filteredNotebooks = notebooks.filter((notebook) =>
@@ -662,6 +931,12 @@ export default function NotebookApp() {
           onMoveCellUp={moveCellEarlier}
           onMoveCellDown={moveCellLater}
           onReorderCells={reorderCells}
+          canUndo={nextUndoLabel !== null && !isHistoryBusy}
+          canRedo={nextRedoLabel !== null && !isHistoryBusy}
+          undoLabel={nextUndoLabel}
+          redoLabel={nextRedoLabel}
+          onUndo={() => applyStructuralHistory("undo")}
+          onRedo={() => applyStructuralHistory("redo")}
           onFocusedCellHandled={() => setFocusedCellId(null)}
           onExportNotebooks={exportNotebooks}
           onImportNotebooks={importNotebooks}

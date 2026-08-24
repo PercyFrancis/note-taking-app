@@ -19,6 +19,8 @@ This document lists the shortcuts currently available in the note-taking app and
 | `Enter` | Find next match | Works while focus is in the find field. Wraps after the last result. |
 | `Shift + Enter` | Find previous match | Works while focus is in the find field. Wraps before the first result. |
 | `Escape` | Close the active overlay | Closes the import dialog first, or closes find and replace. Import cannot be dismissed while an import is running. |
+| `Ctrl/Cmd + Z` | Undo the last structural cell action | Works outside editable fields. Covers cell add, delete, duplicate, move, and drag-reorder. |
+| `Ctrl/Cmd + Shift + Z` | Redo the last structural cell action | Works outside editable fields. Native undo/redo remains available while typing. |
 
 ### Selected Cell
 
@@ -76,18 +78,6 @@ These should operate only inside a text-cell textarea and should wrap the select
 | `Ctrl/Cmd + Shift + 9` | Toggle task item | `- [ ] item` |
 | `Ctrl/Cmd + Alt + P` | Toggle Write/Preview for the current text cell | Avoids `Ctrl/Cmd + Shift + V`, which users expect to paste without formatting. |
 
-### Undo and Redo
-
-Only add these after the scoped undo/redo feature has a persistence-safe history model.
-
-| Proposed Shortcut | Proposed Action | Context |
-|---|---|---|
-| `Ctrl/Cmd + Z` | Undo the last structural action | Selection mode only. Native textarea undo must win while typing. |
-| `Ctrl/Cmd + Shift + Z` | Redo the last structural action | Selection mode only. |
-| `Ctrl + Y` | Redo on Windows/Linux | Optional platform alias in selection mode. |
-
-Structural history should initially cover adding, deleting, duplicating, moving, and reordering cells. It should not replace the textarea's native per-keystroke history.
-
 ### Later, When the Features Exist
 
 | Proposed Shortcut | Proposed Action | Dependency |
@@ -96,6 +86,7 @@ Structural history should initially cover adding, deleting, duplicating, moving,
 | `Ctrl/Cmd + Alt + A` | Attach an image to the current text cell | Image attachments. Recheck operating-system and accessibility conflicts before implementation. |
 | `Ctrl/Cmd + Shift + E` | Export the active notebook | Active-notebook export rather than the current all-notebook export. |
 | `Shift + ArrowUp/ArrowDown` | Extend a multi-cell selection | Requires a multi-cell selection model and bulk actions. |
+| `Ctrl + Y` | Redo on Windows/Linux | Optional platform alias for the implemented structural redo command. |
 
 ## Shortcuts to Avoid in the Web App
 

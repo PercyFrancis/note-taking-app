@@ -15,6 +15,7 @@ import type {
   NotebooksResponse,
   ReorderCellsInput,
   ReorderNotebooksInput,
+  RestoreCellInput,
   StoredNotebooks,
   TextCell,
   UpdateCellInput,
@@ -49,7 +50,7 @@ function isDrawingCell(value: unknown): value is DrawingCell {
     typeof value.updatedAt === "number"
   );
 }
-function isNotebookCell(value: unknown): value is NotebookCell {
+export function isNotebookCell(value: unknown): value is NotebookCell {
   return isTextCell(value) || isDrawingCell(value);
 }
 export function isNotebook(value: unknown): value is Notebook {
@@ -139,6 +140,19 @@ export function isCreateCellInput(value: unknown): value is CreateCellInput {
     (typeof value.afterCellId === "string" && isUuid(value.afterCellId));
 
   return hasValidType && hasValidAfterCellId;
+}
+
+export function isRestoreCellInput(value: unknown): value is RestoreCellInput {
+  if (!isRecord(value) || !isNotebookCell(value.cell)) {
+    return false;
+  }
+
+  return (
+    isUuid(value.cell.id) &&
+    typeof value.position === "number" &&
+    Number.isInteger(value.position) &&
+    value.position >= 0
+  );
 }
 
 export function isCellResponse(value: unknown): value is CellResponse {

@@ -9,6 +9,7 @@ import type {
   NotebookCell,
   NotebookRow,
   PositionRow,
+  RestoreCellInput,
   UpdateCellInput,
   UpdateCellResult,
 } from "../types";
@@ -320,6 +321,115 @@ export async function createCell(
   }
 
   return mapCellRowToNotebookCell(rows[0]);
+}
+
+export async function restoreCell(
+  userId: string,
+  notebookId: string,
+  input: RestoreCellInput,
+): Promise<NotebookCell | null> {
+  const { cell, position } = input;
+  const content = cell.type === "text" ? cell.content : null;
+  const drawing = cell.type === "drawing" ? cell.drawing : null;
+
+  const rows = (await sql.query(
+    `
+      with target_notebook as (
+        select id
+        from notebooks
+        where id = $1
+          and user_id = $2
+      ),
+      target_position as (
+        select $3::integer as position
+        from target_notebook
+        where $3::integer >= 0
+          and $3::integer <= (
+            select count(*)
+            from cells
+            where notebook_id = target_notebook.id
+          )
+          and not exists (
+            select 1 from cells where id = $4::uuid
+          )
+      ),
+      shifted_cells as (
+        update cells
+        set position = position + 1,
+            updated_at = now()
+        where notebook_id = (select id from target_notebook)
+          and position >= (select position from target_position)
+        returning id
+      ),
+      inserted_cell as (
+        insert into cells (
+          id,
+          notebook_id,
+          type,
+          position,
+          content,
+          drawing,
+          height_px,
+          created_at,
+          updated_at
+        )
+        select
+          $4,
+          target_notebook.id,
+          $5,
+          target_position.position,
+          $6,
+          $7,
+          $8,
+          to_timestamp($9 / 1000.0),
+          to_timestamp($10 / 1000.0)
+        from target_notebook
+        cross join target_position
+        returning
+          id,
+          notebook_id,
+          type,
+          position,
+          content,
+          drawing,
+          height_px,
+          created_at,
+          updated_at
+      ),
+      updated_notebook as (
+        update notebooks
+        set updated_at = now()
+        where id = (select id from target_notebook)
+          and exists (select 1 from inserted_cell)
+        returning id
+      )
+      select
+        id,
+        notebook_id,
+        type,
+        position,
+        content,
+        drawing,
+        height_px,
+        created_at,
+        updated_at
+      from inserted_cell
+    `,
+    [
+      notebookId,
+      userId,
+      position,
+      cell.id,
+      cell.type,
+      content,
+      drawing,
+      cell.heightPx,
+      cell.createdAt,
+      cell.updatedAt,
+    ],
+  )) as CellRow[];
+
+  return rows.length === 0 ? null : mapCellRowToNotebookCell(rows[0]);
 }
 
 export async function deleteCell(

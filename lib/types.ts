@@ -101,6 +101,11 @@ export interface CreateCellInput {
   afterCellId?: string | null;
 }
 
+export interface RestoreCellInput {
+  cell: NotebookCell;
+  position: number;
+}
+
 export interface CellResponse {
   cell: NotebookCell;
 }

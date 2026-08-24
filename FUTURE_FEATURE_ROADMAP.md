@@ -340,7 +340,13 @@ If imported markdown contains image URLs, import/export does not automatically c
 
 That is acceptable for a first version, but later you may want a real attachment export format.
 
-## 4. Scoped Undo And Redo
+## 4. Scoped Undo And Redo (Implemented)
+
+The initial implementation keeps up to 50 structural actions per notebook in memory. It covers adding, deleting, duplicating, moving, and drag-reordering cells. Undo and redo persist every change to the server before updating the interface, and a failed request leaves both the visible notebook and history stacks unchanged.
+
+Deleted cells are restored with their original ID, type, content, drawing data, height, timestamps, and position. Preserving the ID also preserves private image references associated with a restored text cell. History is cleared on page reload, sign-out, and notebook import.
+
+The notebook toolbar shows Undo and Redo buttons with the next action in their tooltips. `Ctrl/Cmd + Z` and `Ctrl/Cmd + Shift + Z` operate on structural history only when focus is outside an editable field, so native text and title undo remain available while typing.
 
 ### Why This Should Not Be First
 
@@ -379,6 +385,21 @@ every drawing stroke
 import/replace undo
 cross-notebook undo
 ```
+
+### Future Scope Expansion
+
+Increase the scope in stages rather than turning every state update into a history entry:
+
+1. **Notebook titles:** Coalesce consecutive title edits into time-bounded entries so a word or editing session is undone instead of one character at a time. Flush the pending title save before crossing a structural history boundary.
+2. **Find and replace:** Record Replace Current as one content entry and Replace All as one atomic multi-cell entry. Add a transactional batch API so the database cannot be left half-replaced if one update fails.
+3. **Markdown editing:** Keep native textarea undo as the immediate typing history. If app-level content history is later required, capture selection and scroll state, group input by editing session, handle paste and IME composition, and coordinate entries with debounced saves.
+4. **Drawing strokes:** Add command-based stroke history only after the drawing data model can represent individual strokes or objects. Bitmap snapshots are too large for a useful high-frequency history stack.
+5. **Imports and bulk operations:** Store compact before/after notebook snapshots and persist the entire operation transactionally. Add size limits so large imports do not exhaust browser memory.
+6. **Durable or cross-device history:** Replace in-memory stacks with a server-side action log containing user, notebook, sequence, action payload, and retention metadata. Define multi-tab conflict behavior before enabling this.
+7. **Attachments:** Keep blobs available while an image insertion can still be redone. Add attachment reference tracking and delayed orphan cleanup before undo is allowed to delete stored files.
+8. **History interface:** Add a history menu with action names and timestamps after there are enough action types to make non-linear inspection useful.
+
+Any expansion should preserve the current persistence rule: an action enters history only after its original server mutation succeeds, and undo/redo moves an entry between stacks only after its inverse mutation succeeds.
 
 ### Possible Design
 

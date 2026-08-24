@@ -7,6 +7,12 @@ import {
 } from "@/components/ui/buttonStyles";
 
 interface NotebookToolbarProps {
+  canUndo: boolean;
+  canRedo: boolean;
+  undoLabel: string | null;
+  redoLabel: string | null;
+  onUndo: () => void;
+  onRedo: () => void;
   onAddTextCell: () => void;
   onAddDrawingCell: () => void;
   onOpenFind: () => void;
@@ -15,6 +21,12 @@ interface NotebookToolbarProps {
 }
 
 export default function NotebookToolbar({
+  canUndo,
+  canRedo,
+  undoLabel,
+  redoLabel,
+  onUndo,
+  onRedo,
   onAddTextCell,
   onAddDrawingCell,
   onOpenFind,
@@ -25,6 +37,32 @@ export default function NotebookToolbar({
 
   return (
     <div className="flex flex-wrap gap-2">
+      <button
+        type="button"
+        onClick={onUndo}
+        disabled={!canUndo}
+        className={secondaryButtonClass}
+        title={
+          undoLabel ? `Undo ${undoLabel} (Ctrl/Cmd + Z)` : "Nothing to undo"
+        }
+      >
+        Undo
+      </button>
+
+      <button
+        type="button"
+        onClick={onRedo}
+        disabled={!canRedo}
+        className={secondaryButtonClass}
+        title={
+          redoLabel
+            ? `Redo ${redoLabel} (Ctrl/Cmd + Shift + Z)`
+            : "Nothing to redo"
+        }
+      >
+        Redo
+      </button>
+
       <button
         type="button"
         onClick={onAddTextCell}

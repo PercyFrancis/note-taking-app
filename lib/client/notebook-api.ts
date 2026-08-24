@@ -12,6 +12,7 @@ import type {
   NotebookCell,
   ReorderCellsInput,
   ReorderNotebooksInput,
+  RestoreCellInput,
   UpdateCellInput,
   UpdateNotebookInput,
 } from "../types";
@@ -97,6 +98,31 @@ export async function createRemoteCell(
 
   if (!response.ok) {
     throw new Error("Failed to create cell");
+  }
+
+  const data: unknown = await response.json();
+
+  if (!isCellResponse(data)) {
+    throw new Error("Invalid cell response");
+  }
+
+  return data.cell;
+}
+
+export async function restoreRemoteCell(
+  notebookId: string,
+  input: RestoreCellInput,
+): Promise<NotebookCell> {
+  const response = await fetch(`/api/notebooks/${notebookId}/cells/restore`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to restore cell");
   }
 
   const data: unknown = await response.json();

@@ -27,6 +27,12 @@ interface NotebookEditorProps {
   onMoveCellUp: (cellId: string) => void;
   onMoveCellDown: (cellId: string) => void;
   onReorderCells: (fromIndex: number, toIndex: number) => void;
+  canUndo: boolean;
+  canRedo: boolean;
+  undoLabel: string | null;
+  redoLabel: string | null;
+  onUndo: () => void;
+  onRedo: () => void;
   onFocusedCellHandled: () => void;
   onExportNotebooks: () => void;
   onImportNotebooks: (file: File) => void;
@@ -65,6 +71,12 @@ export default function NotebookEditor({
   onMoveCellUp,
   onMoveCellDown,
   onReorderCells,
+  canUndo,
+  canRedo,
+  undoLabel,
+  redoLabel,
+  onUndo,
+  onRedo,
   onFocusedCellHandled,
   onExportNotebooks,
   onImportNotebooks,
@@ -109,12 +121,28 @@ export default function NotebookEditor({
         return;
       }
 
+      const isModifierPressed = event.ctrlKey || event.metaKey;
+      const isTypingInEditableElement = isEditableTarget(event.target);
+
+      if (
+        isModifierPressed &&
+        event.key.toLowerCase() === "z" &&
+        !isTypingInEditableElement
+      ) {
+        const shouldRedo = event.shiftKey;
+
+        if ((shouldRedo && canRedo) || (!shouldRedo && canUndo)) {
+          event.preventDefault();
+          shouldRedo ? onRedo() : onUndo();
+        }
+
+        return;
+      }
+
       if (!selectedCellId) {
         return;
       }
 
-      const isModifierPressed = event.ctrlKey || event.metaKey;
-      const isTypingInEditableElement = isEditableTarget(event.target);
       const targetCellId = getTargetCellId(event.target);
 
       if (isTypingInEditableElement && targetCellId !== selectedCellId) {
@@ -164,12 +192,16 @@ export default function NotebookEditor({
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [
     isFindOpen,
+    canRedo,
+    canUndo,
     selectedCellId,
     onAddTextCellAfter,
     onCopyCell,
     onMoveCellDown,
     onMoveCellUp,
+    onRedo,
     onRemoveCell,
+    onUndo,
   ]);
 
   useEffect(() => {
@@ -205,6 +237,12 @@ export default function NotebookEditor({
           />
 
           <NotebookToolbar
+            canUndo={canUndo}
+            canRedo={canRedo}
+            undoLabel={undoLabel}
+            redoLabel={redoLabel}
+            onUndo={onUndo}
+            onRedo={onRedo}
             onAddTextCell={onAddTextCell}
             onAddDrawingCell={onAddDrawingCell}
             onOpenFind={openFind}
