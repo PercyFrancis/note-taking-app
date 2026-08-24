@@ -5,7 +5,11 @@ import {
   smallDangerButtonClass,
   smallSecondaryButtonClass,
 } from "@/components/ui/buttonStyles";
-import type { NotebookCell, TextSelectionRequest } from "@/lib/types";
+import type {
+  MarkdownInsertionRequest,
+  NotebookCell,
+  TextSelectionRequest,
+} from "@/lib/types";
 
 interface CellFrameProps {
   cell: NotebookCell;
@@ -14,6 +18,7 @@ interface CellFrameProps {
   isSelected: boolean;
   findQuery: string;
   textSelection: TextSelectionRequest | null;
+  markdownInsertion: MarkdownInsertionRequest | null;
   onUpdateTextCell: (cellId: string, content: string) => void;
   onUpdateDrawingCell: (cellId: string, drawing: string | null) => void;
   onUpdateCellHeight: (cellId: string, heightPx: number) => void;
@@ -34,6 +39,7 @@ export default function CellFrame({
   isSelected,
   findQuery,
   textSelection,
+  markdownInsertion,
   onUpdateTextCell,
   onUpdateDrawingCell,
   onUpdateCellHeight,
@@ -172,6 +178,7 @@ export default function CellFrame({
           onChange={(content) => onUpdateTextCell(cell.id, content)}
           shouldFocus={focusedCellId === cell.id}
           textSelection={textSelection}
+          markdownInsertion={markdownInsertion}
           onFocusHandled={onFocusedCellHandled}
         />
       ) : (

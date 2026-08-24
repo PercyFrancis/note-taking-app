@@ -16,6 +16,7 @@ interface NotebookToolbarProps {
   onAddTextCell: () => void;
   onAddDrawingCell: () => void;
   onOpenFind: () => void;
+  onOpenImageLibrary: () => void;
   onExportNotebooks: () => void;
   onImportNotebooks: (file: File) => void;
 }
@@ -30,6 +31,7 @@ export default function NotebookToolbar({
   onAddTextCell,
   onAddDrawingCell,
   onOpenFind,
+  onOpenImageLibrary,
   onExportNotebooks,
   onImportNotebooks,
 }: NotebookToolbarProps) {
@@ -86,6 +88,14 @@ export default function NotebookToolbar({
         title="Find and replace (Ctrl/Cmd + F)"
       >
         Find and replace
+      </button>
+
+      <button
+        type="button"
+        onClick={onOpenImageLibrary}
+        className={secondaryButtonClass}
+      >
+        Image library
       </button>
 
       <button

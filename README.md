@@ -20,4 +20,10 @@ Do not commit the real Blob token. The placeholder in `.env.example` only docume
 
 The app accepts JPEG, PNG, WebP, and GIF images up to 10 MB. Uploads go directly from the browser to Vercel Blob using a short-lived token issued only after the app verifies that the signed-in user owns the target text cell. Private images are displayed through an authenticated app route.
 
-The first version stores the authenticated image URL directly in Markdown. Removing the Markdown or deleting its cell does not delete the underlying Blob yet. JSON exports preserve image references but do not copy the files, and another user cannot access the original owner's private images.
+Use **Image library** in the notebook toolbar to browse every image uploaded by the signed-in user. The library is sorted newest first and supports filename search, pagination, full-size previews, copying the authenticated URL or complete Markdown, and inserting an existing image at the selected text cell's last caret position. Images whose original upload cell no longer exists remain available and are labeled **Unattached**.
+
+The authenticated URLs copied by the library are recoverable note references, not public sharing links. They only render when the image owner is signed in.
+
+The library lists Blob metadata directly and does not require an attachments database table. It loads up to 20,000 images; if an account grows beyond that, the UI reports the limit and a database-backed attachment index should be added.
+
+Removing Markdown or deleting its cell does not delete the underlying Blob. The image library deliberately does not provide permanent deletion yet because an image may still be referenced by another cell, an export, or redo history. JSON exports preserve image references but do not copy the files, and another user cannot access the original owner's private images.

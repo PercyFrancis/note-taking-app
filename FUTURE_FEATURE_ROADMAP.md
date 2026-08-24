@@ -222,7 +222,9 @@ normally opens browser find. If you override it, your app's find feature should 
 
 ## 3. Attach Images To Markdown Cells (Implemented)
 
-The initial implementation uses private Vercel Blob storage with authenticated client uploads and authenticated image delivery. It accepts JPEG, PNG, WebP, and GIF files up to 10 MB, inserts Markdown at the current cursor position, uses the filename for default alt text, and displays upload progress.
+The implementation uses private Vercel Blob storage with authenticated client uploads and authenticated image delivery. It accepts JPEG, PNG, WebP, and GIF files up to 10 MB, inserts Markdown at the current cursor position, uses the filename for default alt text, and displays upload progress.
+
+An authenticated image library in the notebook toolbar lists the signed-in user's uploads directly from Blob storage. It provides newest-first thumbnails, filename search, pagination, source notebook/cell labels when available, recovery of images from deleted cells, URL and Markdown copying, previews, and insertion into the selected text cell. Permanent deletion remains deferred until attachment references can be tracked safely.
 
 Setup and current limitations are documented in [README.md](./README.md#private-image-storage).
 

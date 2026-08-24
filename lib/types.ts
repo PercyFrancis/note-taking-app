@@ -110,6 +110,26 @@ export interface CellResponse {
   cell: NotebookCell;
 }
 
+export interface UploadedImage {
+  pathname: string;
+  url: string;
+  filename: string;
+  size: number;
+  uploadedAt: number;
+  cellId: string;
+}
+
+export interface UploadedImagesResponse {
+  images: UploadedImage[];
+  truncated: boolean;
+}
+
+export interface MarkdownInsertionRequest {
+  cellId: string;
+  markdown: string;
+  requestId: number;
+}
+
 export interface NotebookCellsRouteContext {
   params: Promise<{
     notebookId: string;

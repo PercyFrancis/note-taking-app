@@ -15,7 +15,11 @@ import {
   MAX_IMAGE_SIZE_BYTES,
   sanitizeImageFilename,
 } from "@/lib/attachments";
-import type { TextCell, TextSelectionRequest } from "@/lib/types";
+import type {
+  MarkdownInsertionRequest,
+  TextCell,
+  TextSelectionRequest,
+} from "@/lib/types";
 import { countWords, findTextCellMatches } from "@/lib/utils";
 
 interface TextCellEditorProps {
@@ -23,6 +27,7 @@ interface TextCellEditorProps {
   shouldFocus: boolean;
   findQuery: string;
   textSelection: TextSelectionRequest | null;
+  markdownInsertion: MarkdownInsertionRequest | null;
   onChange: (content: string) => void;
   onFocusHandled: () => void;
 }
@@ -32,6 +37,7 @@ export default function TextCellEditor({
   shouldFocus,
   findQuery,
   textSelection,
+  markdownInsertion,
   onChange,
   onFocusHandled,
 }: TextCellEditorProps) {
@@ -41,7 +47,9 @@ export default function TextCellEditor({
   const highlightLayerRef = useRef<HTMLDivElement | null>(null);
   const activeMatchRef = useRef<HTMLElement | null>(null);
   const handledSelectionRequestIdRef = useRef<number | null>(null);
+  const handledInsertionRequestIdRef = useRef<number | null>(null);
   const insertionPositionRef = useRef(0);
+  const lastCaretPositionRef = useRef(cell.content.length);
   const latestContentRef = useRef(cell.content);
   const [mode, setMode] = useState<"write" | "preview">("write");
   const [pendingCaretPosition, setPendingCaretPosition] = useState<
@@ -99,6 +107,34 @@ export default function TextCellEditor({
 
     handledSelectionRequestIdRef.current = textSelection.requestId;
   }, [cell.id, mode, textSelection]);
+
+  useEffect(() => {
+    if (
+      !markdownInsertion ||
+      markdownInsertion.cellId !== cell.id ||
+      handledInsertionRequestIdRef.current === markdownInsertion.requestId
+    ) {
+      return;
+    }
+
+    if (mode !== "write") {
+      setMode("write");
+      return;
+    }
+
+    const currentContent = latestContentRef.current;
+    const insertionPosition = Math.min(
+      lastCaretPositionRef.current,
+      currentContent.length,
+    );
+    const nextContent = `${currentContent.slice(0, insertionPosition)}${markdownInsertion.markdown}${currentContent.slice(insertionPosition)}`;
+
+    handledInsertionRequestIdRef.current = markdownInsertion.requestId;
+    lastCaretPositionRef.current =
+      insertionPosition + markdownInsertion.markdown.length;
+    setPendingCaretPosition(lastCaretPositionRef.current);
+    onChange(nextContent);
+  }, [cell.id, markdownInsertion, mode, onChange]);
 
   useEffect(() => {
     if (pendingCaretPosition === null || mode !== "write") {
@@ -293,6 +329,9 @@ export default function TextCellEditor({
             value={cell.content}
             ref={textareaRef}
             onChange={(event) => onChange(event.target.value)}
+            onSelect={(event) => {
+              lastCaretPositionRef.current = event.currentTarget.selectionStart;
+            }}
             onScroll={(event) => {
               if (!highlightLayerRef.current) {
                 return;

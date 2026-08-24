@@ -916,6 +916,7 @@ export default function NotebookApp() {
       {activeNotebook ? (
         <NotebookEditor
           notebook={activeNotebook}
+          notebooks={notebooks}
           focusedCellId={focusedCellId}
           onUpdateNotebook={updateNotebook}
           onAddTextCell={addTextCell}

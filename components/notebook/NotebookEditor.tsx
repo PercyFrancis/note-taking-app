@@ -1,9 +1,11 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import CellList from "@/components/notebook/CellList";
+import ImageLibraryDialog from "@/components/notebook/ImageLibraryDialog";
 import NotebookFindReplace from "@/components/notebook/NotebookFindReplace";
 import NotebookToolbar from "@/components/notebook/NotebookToolbar";
 import type {
+  MarkdownInsertionRequest,
   Notebook,
   NotebookUpdate,
   TextCellMatch,
@@ -12,6 +14,7 @@ import type {
 
 interface NotebookEditorProps {
   notebook: Notebook;
+  notebooks: Notebook[];
   focusedCellId: string | null;
   onUpdateNotebook: (fields: NotebookUpdate) => void;
   onAddTextCell: () => void;
@@ -56,6 +59,7 @@ function getTargetCellId(target: EventTarget | null): string | null {
 
 export default function NotebookEditor({
   notebook,
+  notebooks,
   focusedCellId,
   onUpdateNotebook,
   onAddTextCell,
@@ -82,12 +86,16 @@ export default function NotebookEditor({
   onImportNotebooks,
 }: NotebookEditorProps) {
   const [isFindOpen, setIsFindOpen] = useState(false);
+  const [isImageLibraryOpen, setIsImageLibraryOpen] = useState(false);
   const [findFocusRequestId, setFindFocusRequestId] = useState(0);
   const [findQuery, setFindQuery] = useState("");
   const [selectedCellId, setSelectedCellId] = useState<string | null>(null);
   const [textSelection, setTextSelection] =
     useState<TextSelectionRequest | null>(null);
   const selectionRequestIdRef = useRef(0);
+  const insertionRequestIdRef = useRef(0);
+  const [markdownInsertion, setMarkdownInsertion] =
+    useState<MarkdownInsertionRequest | null>(null);
 
   function openFind() {
     setIsFindOpen(true);
@@ -246,6 +254,7 @@ export default function NotebookEditor({
             onAddTextCell={onAddTextCell}
             onAddDrawingCell={onAddDrawingCell}
             onOpenFind={openFind}
+            onOpenImageLibrary={() => setIsImageLibraryOpen(true)}
             onExportNotebooks={onExportNotebooks}
             onImportNotebooks={onImportNotebooks}
           />
@@ -273,6 +282,7 @@ export default function NotebookEditor({
         selectedCellId={selectedCellId}
         findQuery={findQuery}
         textSelection={textSelection}
+        markdownInsertion={markdownInsertion}
         onUpdateTextCell={onUpdateTextCell}
         onUpdateDrawingCell={onUpdateDrawingCell}
         onUpdateCellHeight={onUpdateCellHeight}
@@ -286,6 +296,28 @@ export default function NotebookEditor({
         onReorderCells={onReorderCells}
         onFocusedCellHandled={onFocusedCellHandled}
       />
+      {isImageLibraryOpen && (
+        <ImageLibraryDialog
+          notebooks={notebooks}
+          selectedTextCellId={
+            notebook.cells.find((cell) => cell.id === selectedCellId)?.type ===
+            "text"
+              ? selectedCellId
+              : null
+          }
+          onInsert={(cellId, markdown) => {
+            insertionRequestIdRef.current += 1;
+            setMarkdownInsertion({
+              cellId,
+              markdown,
+              requestId: insertionRequestIdRef.current,
+            });
+            setSelectedCellId(cellId);
+            setIsImageLibraryOpen(false);
+          }}
+          onClose={() => setIsImageLibraryOpen(false)}
+        />
+      )}
     </section>
   );
 }

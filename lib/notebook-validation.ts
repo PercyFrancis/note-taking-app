@@ -20,6 +20,7 @@ import type {
   TextCell,
   UpdateCellInput,
   UpdateNotebookInput,
+  UploadedImagesResponse,
 } from "./types";
 import { isUuid } from "./utils";
 
@@ -161,6 +162,30 @@ export function isCellResponse(value: unknown): value is CellResponse {
   }
 
   return isNotebookCell(value.cell);
+}
+
+export function isUploadedImagesResponse(
+  value: unknown,
+): value is UploadedImagesResponse {
+  if (
+    !isRecord(value) ||
+    !Array.isArray(value.images) ||
+    typeof value.truncated !== "boolean"
+  ) {
+    return false;
+  }
+
+  return value.images.every(
+    (image) =>
+      isRecord(image) &&
+      typeof image.pathname === "string" &&
+      typeof image.url === "string" &&
+      typeof image.filename === "string" &&
+      typeof image.size === "number" &&
+      typeof image.uploadedAt === "number" &&
+      typeof image.cellId === "string" &&
+      isUuid(image.cellId),
+  );
 }
 
 export function isUpdateCellInput(value: unknown): value is UpdateCellInput {
