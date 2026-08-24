@@ -220,7 +220,11 @@ Ctrl/Cmd + F
 
 normally opens browser find. If you override it, your app's find feature should be good enough to justify that.
 
-## 3. Attach Images To Markdown Cells
+## 3. Attach Images To Markdown Cells (Implemented)
+
+The initial implementation uses private Vercel Blob storage with authenticated client uploads and authenticated image delivery. It accepts JPEG, PNG, WebP, and GIF files up to 10 MB, inserts Markdown at the current cursor position, uses the filename for default alt text, and displays upload progress.
+
+Setup and current limitations are documented in [README.md](./README.md#private-image-storage).
 
 ### Why This Is High Value
 

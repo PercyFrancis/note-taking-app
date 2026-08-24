@@ -466,6 +466,25 @@ export async function updateCell(
   };
 }
 
+export async function userOwnsTextCell(
+  userId: string,
+  cellId: string,
+): Promise<boolean> {
+  const rows = (await sql.query(
+    `
+      select cells.id
+      from cells
+      join notebooks on cells.notebook_id = notebooks.id
+      where cells.id = $1
+        and cells.type = 'text'
+        and notebooks.user_id = $2
+    `,
+    [cellId, userId],
+  )) as ChangedCellRow[];
+
+  return rows.length > 0;
+}
+
 export async function reorderCells(
   userId: string,
   notebookId: string,
