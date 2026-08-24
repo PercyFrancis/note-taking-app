@@ -34,6 +34,13 @@ This document lists the shortcuts currently available in the note-taking app and
 
 Buttons associated with these actions show their shortcuts in tooltips.
 
+### Text Cell Editing
+
+| Shortcut | Action | Context and Notes |
+|---|---|---|
+| `Tab` | Insert a tab or indent selected lines | Works inside a text-cell editor instead of moving focus. Tabs display at a width of two spaces. |
+| `Shift + Tab` | Remove one leading tab or up to four leading spaces | Applies to the current line or every selected line. |
+
 ## Recommended Shortcuts
 
 These shortcuts are proposals, not currently implemented. Add them incrementally and keep every shortcut context-sensitive.

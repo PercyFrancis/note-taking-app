@@ -52,9 +52,10 @@ export default function TextCellEditor({
   const lastCaretPositionRef = useRef(cell.content.length);
   const latestContentRef = useRef(cell.content);
   const [mode, setMode] = useState<"write" | "preview">("write");
-  const [pendingCaretPosition, setPendingCaretPosition] = useState<
-    number | null
-  >(null);
+  const [pendingSelection, setPendingSelection] = useState<{
+    start: number;
+    end: number;
+  } | null>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState("");
@@ -132,12 +133,15 @@ export default function TextCellEditor({
     handledInsertionRequestIdRef.current = markdownInsertion.requestId;
     lastCaretPositionRef.current =
       insertionPosition + markdownInsertion.markdown.length;
-    setPendingCaretPosition(lastCaretPositionRef.current);
+    setPendingSelection({
+      start: lastCaretPositionRef.current,
+      end: lastCaretPositionRef.current,
+    });
     onChange(nextContent);
   }, [cell.id, markdownInsertion, mode, onChange]);
 
   useEffect(() => {
-    if (pendingCaretPosition === null || mode !== "write") {
+    if (!pendingSelection || mode !== "write") {
       return;
     }
 
@@ -148,9 +152,9 @@ export default function TextCellEditor({
     }
 
     textarea.focus();
-    textarea.setSelectionRange(pendingCaretPosition, pendingCaretPosition);
-    setPendingCaretPosition(null);
-  }, [mode, pendingCaretPosition]);
+    textarea.setSelectionRange(pendingSelection.start, pendingSelection.end);
+    setPendingSelection(null);
+  }, [mode, pendingSelection]);
 
   function chooseImage() {
     insertionPositionRef.current =
@@ -202,7 +206,11 @@ export default function TextCellEditor({
       );
       const nextContent = `${currentContent.slice(0, insertionPosition)}${imageMarkdown}${currentContent.slice(insertionPosition)}`;
 
-      setPendingCaretPosition(insertionPosition + imageMarkdown.length);
+      const nextCaretPosition = insertionPosition + imageMarkdown.length;
+      setPendingSelection({
+        start: nextCaretPosition,
+        end: nextCaretPosition,
+      });
       setMode("write");
       onChange(nextContent);
     } catch {
@@ -213,6 +221,80 @@ export default function TextCellEditor({
       setIsUploadingImage(false);
       setUploadProgress(0);
     }
+  }
+
+  function handleTabKey(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== "Tab") {
+      return;
+    }
+
+    event.preventDefault();
+
+    const textarea = event.currentTarget;
+    const content = textarea.value;
+    const selectionStart = textarea.selectionStart;
+    const selectionEnd = textarea.selectionEnd;
+
+    if (!event.shiftKey && selectionStart === selectionEnd) {
+      const nextContent = `${content.slice(0, selectionStart)}\t${content.slice(selectionEnd)}`;
+      const nextCaretPosition = selectionStart + 1;
+
+      lastCaretPositionRef.current = nextCaretPosition;
+      setPendingSelection({
+        start: nextCaretPosition,
+        end: nextCaretPosition,
+      });
+      onChange(nextContent);
+      return;
+    }
+
+    const lineStart = content.lastIndexOf("\n", selectionStart - 1) + 1;
+    const selectionEndsAtLineStart =
+      selectionEnd > lineStart && content[selectionEnd - 1] === "\n";
+    const affectedSelectionEnd = selectionEndsAtLineStart
+      ? selectionEnd - 1
+      : selectionEnd;
+    const nextLineBreak = content.indexOf("\n", affectedSelectionEnd);
+    const blockEnd = nextLineBreak === -1 ? content.length : nextLineBreak;
+    const lines = content.slice(lineStart, blockEnd).split("\n");
+
+    if (!event.shiftKey) {
+      const indentedBlock = lines.map((line) => `\t${line}`).join("\n");
+      const nextSelection = {
+        start: selectionStart + 1,
+        end: selectionEnd + lines.length,
+      };
+      const nextContent = `${content.slice(0, lineStart)}${indentedBlock}${content.slice(blockEnd)}`;
+
+      lastCaretPositionRef.current = nextSelection.end;
+      setPendingSelection(nextSelection);
+      onChange(nextContent);
+      return;
+    }
+
+    const removalLengths = lines.map((line) => {
+      if (line.startsWith("\t")) {
+        return 1;
+      }
+
+      return line.match(/^ {1,4}/)?.[0].length ?? 0;
+    });
+    const dedentedBlock = lines
+      .map((line, index) => line.slice(removalLengths[index]))
+      .join("\n");
+    const totalRemoved = removalLengths.reduce(
+      (total, length) => total + length,
+      0,
+    );
+    const nextSelection = {
+      start: Math.max(lineStart, selectionStart - removalLengths[0]),
+      end: Math.max(lineStart, selectionEnd - totalRemoved),
+    };
+    const nextContent = `${content.slice(0, lineStart)}${dedentedBlock}${content.slice(blockEnd)}`;
+
+    lastCaretPositionRef.current = nextSelection.end;
+    setPendingSelection(nextSelection);
+    onChange(nextContent);
   }
 
   function renderHighlightedContent() {
@@ -329,6 +411,7 @@ export default function TextCellEditor({
             value={cell.content}
             ref={textareaRef}
             onChange={(event) => onChange(event.target.value)}
+            onKeyDown={handleTabKey}
             onSelect={(event) => {
               lastCaretPositionRef.current = event.currentTarget.selectionStart;
             }}
@@ -343,7 +426,7 @@ export default function TextCellEditor({
                 event.currentTarget.scrollLeft;
             }}
             placeholder="Write something..."
-            className="relative block h-full w-full resize-none overflow-auto rounded-md border border-slate-200 p-3 text-sm leading-6 text-slate-800 outline-none focus-visible:border-slate-400 focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
+            className="relative block h-full w-full resize-none overflow-auto rounded-md border border-slate-200 p-3 text-sm leading-6 text-slate-800 outline-none [tab-size:2] focus-visible:border-slate-400 focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
           />
         </div>
       ) : (
@@ -352,7 +435,7 @@ export default function TextCellEditor({
           className="box-border break-words [overflow-wrap:anywhere] block min-w-0 overflow-auto rounded-md border border-slate-200 bg-white p-3"
         >
           <div
-            className="
+            className="markdown-preview
               prose prose-slate prose-sm max-w-none
               prose-table:w-full
               prose-table:border-collapse

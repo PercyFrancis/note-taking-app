@@ -136,7 +136,14 @@ export default function ImageLibraryDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-3 md:p-6">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-3 md:p-6"
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
       <section
         role="dialog"
         aria-modal="true"
