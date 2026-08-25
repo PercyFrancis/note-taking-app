@@ -469,9 +469,9 @@ Avoid an undo system that only changes React state while the database remains di
 
 Drawing cells now distinguish mouse, pen, and touch pointers. Mouse and pen input draw automatically, while one-finger gestures scroll the page unless **Touch drawing** is enabled in the notebook toolbar. The global preference applies to every drawing cell, is remembered in the current browser, and defaults to off.
 
-Each canvas accepts one active drawing pointer, captures it for the full stroke, ignores palm and additional touch input while drawing, and prevents page scrolling only for accepted strokes. Single taps still create dots, leaving the canvas no longer ends a captured stroke, and the bitmap is saved once when the stroke finishes or pointer capture is cancelled.
+Each canvas accepts one active pointer and captures it for the full gesture. The canvas disables native touch gestures so iPadOS cannot convert a downward Apple Pencil stroke into page scrolling. When touch drawing is off, finger movement is forwarded to the notebook's scroll container; when it is on, the same movement draws. Palm and additional touch input are ignored while drawing. Single taps still create dots, and leaving the canvas no longer ends a captured stroke.
 
-Pen and eraser widths respond to pressure when a device reports it. Mouse and finger strokes keep the selected fixed width. Coalesced pointer samples are used when supported to make fast pen strokes smoother without changing the existing PNG data URL storage format.
+Pen and eraser widths respond to pressure when a device reports it. Mouse and finger strokes keep the selected fixed width. Coalesced pointer samples are used when supported to make fast pen strokes smoother. PNG serialization now runs asynchronously after a stroke, and obsolete encodes are discarded when another stroke begins, allowing rapid strokes without changing the existing data URL storage format.
 
 ### Why This Comes Before A Drawing Rewrite
 

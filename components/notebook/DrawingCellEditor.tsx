@@ -23,6 +23,8 @@ interface CanvasPoint {
   y: number;
 }
 
+type ActivePointerMode = "drawing" | "scrolling";
+
 export default function DrawingCellEditor({
   cell,
   isTouchDrawingEnabled,
@@ -30,18 +32,21 @@ export default function DrawingCellEditor({
 }: DrawingCellEditorProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const activePointerIdRef = useRef<number | null>(null);
+  const activePointerModeRef = useRef<ActivePointerMode | null>(null);
   const lastPointRef = useRef<CanvasPoint | null>(null);
+  const lastScrollClientYRef = useRef<number | null>(null);
   const skipNextRestoreRef = useRef(false);
+  const saveRequestIdRef = useRef(0);
 
   const [tool, setTool] = useState<"pen" | "eraser">("pen");
   const [color, setColor] = useState("#0f172a");
   const [brushSize, setBrushSize] = useState(4);
-  const [isActivelyDrawing, setIsActivelyDrawing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const canvasWidth = 900;
   const canvasHeight = cell.heightPx;
 
-  function shouldAcceptPointer(
+  function canStartPointer(
     event: React.PointerEvent<HTMLCanvasElement>,
   ): boolean {
     if (
@@ -52,22 +57,33 @@ export default function DrawingCellEditor({
       return false;
     }
 
-    return event.pointerType !== "touch" || isTouchDrawingEnabled;
+    return true;
   }
 
   function startDrawing(event: React.PointerEvent<HTMLCanvasElement>) {
-    if (!shouldAcceptPointer(event)) return;
+    if (!canStartPointer(event)) return;
 
     event.preventDefault();
 
     const canvas = event.currentTarget;
 
-    const context = canvas.getContext("2d");
-    if (!context) return;
-
     canvas.setPointerCapture(event.pointerId);
     activePointerIdRef.current = event.pointerId;
-    setIsActivelyDrawing(true);
+
+    if (event.pointerType === "touch" && !isTouchDrawingEnabled) {
+      activePointerModeRef.current = "scrolling";
+      lastScrollClientYRef.current = event.clientY;
+      return;
+    }
+
+    const context = canvas.getContext("2d");
+    if (!context) {
+      resetActivePointer(canvas, event.pointerId, true);
+      return;
+    }
+
+    activePointerModeRef.current = "drawing";
+    saveRequestIdRef.current += 1;
 
     const point = getCanvasPoint(event.nativeEvent, canvas);
     const strokeWidth = getStrokeWidth(event.nativeEvent);
@@ -84,6 +100,13 @@ export default function DrawingCellEditor({
     if (activePointerIdRef.current !== event.pointerId) return;
 
     event.preventDefault();
+
+    if (activePointerModeRef.current === "scrolling") {
+      scrollNotebookFromTouch(event);
+      return;
+    }
+
+    if (activePointerModeRef.current !== "drawing") return;
 
     const canvas = event.currentTarget;
 
@@ -112,6 +135,27 @@ export default function DrawingCellEditor({
 
       lastPointRef.current = currentPoint;
     }
+  }
+
+  function scrollNotebookFromTouch(
+    event: React.PointerEvent<HTMLCanvasElement>,
+  ) {
+    const lastClientY = lastScrollClientYRef.current;
+
+    if (lastClientY === null) {
+      lastScrollClientYRef.current = event.clientY;
+      return;
+    }
+
+    const scrollContainer = event.currentTarget.closest<HTMLElement>(
+      "[data-cell-scroll-container]",
+    );
+
+    if (scrollContainer) {
+      scrollContainer.scrollTop += lastClientY - event.clientY;
+    }
+
+    lastScrollClientYRef.current = event.clientY;
   }
 
   function getCanvasPoint(event: PointerEvent, canvas: HTMLCanvasElement) {
@@ -146,18 +190,70 @@ export default function DrawingCellEditor({
     pointerId: number,
     shouldReleaseCapture: boolean,
   ) {
+    const pointerMode = activePointerModeRef.current;
+    resetActivePointer(canvas, pointerId, shouldReleaseCapture);
+
+    if (pointerMode !== "drawing") {
+      return;
+    }
+
+    saveDrawing(canvas);
+  }
+
+  function resetActivePointer(
+    canvas: HTMLCanvasElement,
+    pointerId: number,
+    shouldReleaseCapture: boolean,
+  ) {
     activePointerIdRef.current = null;
+    activePointerModeRef.current = null;
     lastPointRef.current = null;
-    setIsActivelyDrawing(false);
+    lastScrollClientYRef.current = null;
 
     if (shouldReleaseCapture && canvas.hasPointerCapture(pointerId)) {
       canvas.releasePointerCapture(pointerId);
     }
+  }
 
-    const dataUrl = canvas.toDataURL("image/png");
+  function saveDrawing(canvas: HTMLCanvasElement) {
+    const requestId = saveRequestIdRef.current + 1;
+    saveRequestIdRef.current = requestId;
+    setIsSaving(true);
+
+    canvas.toBlob((blob) => {
+      if (saveRequestIdRef.current !== requestId) {
+        return;
+      }
+
+      if (!blob) {
+        persistDrawing(canvas.toDataURL("image/png"), requestId);
+        return;
+      }
+
+      const reader = new FileReader();
+
+      reader.onload = () => {
+        if (typeof reader.result === "string") {
+          persistDrawing(reader.result, requestId);
+        }
+      };
+      reader.onerror = () => {
+        if (saveRequestIdRef.current === requestId) {
+          setIsSaving(false);
+        }
+      };
+      reader.readAsDataURL(blob);
+    }, "image/png");
+  }
+
+  function persistDrawing(dataUrl: string, requestId: number) {
+    if (saveRequestIdRef.current !== requestId) {
+      return;
+    }
 
     skipNextRestoreRef.current = true;
     onChange(dataUrl);
+    setIsSaving(false);
   }
 
   useEffect(() => {
@@ -196,6 +292,8 @@ export default function DrawingCellEditor({
 
     context.clearRect(0, 0, canvas.width, canvas.height);
 
+    saveRequestIdRef.current += 1;
+    setIsSaving(false);
     skipNextRestoreRef.current = true;
     onChange(null);
   }
@@ -316,16 +414,16 @@ export default function DrawingCellEditor({
             finishDrawing(event.currentTarget, event.pointerId, false);
           }
         }}
-        className={`block w-full rounded-md border border-slate-300 bg-white ${
-          isTouchDrawingEnabled || isActivelyDrawing
-            ? "touch-none"
-            : "touch-pan-y"
-        }`}
+        className="block w-full touch-none rounded-md border border-slate-300 bg-white"
       />
 
       <p className="mt-2 text-xs text-slate-400">
-        {cell.drawing ? "Drawing saved" : "Empty drawing"} | Pen pressure is
-        automatic when supported.
+        {isSaving
+          ? "Saving drawing..."
+          : cell.drawing
+            ? "Drawing saved"
+            : "Empty drawing"}{" "}
+        | Pen pressure is automatic when supported.
       </p>
     </div>
   );

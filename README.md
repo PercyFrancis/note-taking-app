@@ -30,6 +30,6 @@ Removing Markdown or deleting its cell does not delete the underlying Blob. The 
 
 ## Mobile And Stylus Drawing
 
-Drawing cells accept mouse and pen input automatically. Finger gestures scroll the page by default; enable **Touch drawing** in the notebook toolbar to use a finger as the pen across every drawing cell. The touch preference is remembered in that browser.
+Drawing cells accept mouse and pen input automatically. Finger drags scroll the notebook by default; enable **Touch drawing** in the notebook toolbar to use a finger as the pen across every drawing cell. The touch preference is remembered in that browser. The canvas owns its pointer gestures so iPadOS cannot convert a downward Apple Pencil stroke into page scrolling; when touch drawing is off, finger movement is forwarded to the notebook scroller instead.
 
-Supported pens use pressure-sensitive pen and eraser widths and coalesced pointer samples when the browser supplies them. Each completed stroke is saved once. Palm and additional touch pointers are ignored while an accepted stroke is active.
+Supported pens use pressure-sensitive pen and eraser widths and coalesced pointer samples when the browser supplies them. Each completed stroke is encoded asynchronously and saved once, keeping rapid follow-up strokes responsive. Palm and additional touch pointers are ignored while an accepted stroke is active.
