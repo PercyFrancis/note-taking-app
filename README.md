@@ -27,3 +27,9 @@ The authenticated URLs copied by the library are recoverable note references, no
 The library lists Blob metadata directly and does not require an attachments database table. It loads up to 20,000 images; if an account grows beyond that, the UI reports the limit and a database-backed attachment index should be added.
 
 Removing Markdown or deleting its cell does not delete the underlying Blob. The image library deliberately does not provide permanent deletion yet because an image may still be referenced by another cell, an export, or redo history. JSON exports preserve image references but do not copy the files, and another user cannot access the original owner's private images.
+
+## Mobile And Stylus Drawing
+
+Drawing cells accept mouse and pen input automatically. Finger gestures scroll the page by default; enable **Touch drawing** in the notebook toolbar to use a finger as the pen across every drawing cell. The touch preference is remembered in that browser.
+
+Supported pens use pressure-sensitive pen and eraser widths and coalesced pointer samples when the browser supplies them. Each completed stroke is saved once. Palm and additional touch pointers are ignored while an accepted stroke is active.

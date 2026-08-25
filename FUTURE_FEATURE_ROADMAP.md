@@ -465,7 +465,13 @@ If delete cell succeeds remotely, undo should recreate it remotely.
 
 Avoid an undo system that only changes React state while the database remains different.
 
-## 5. Mobile / Stylus Drawing Improvements
+## 5. Mobile / Stylus Drawing Improvements (Implemented)
+
+Drawing cells now distinguish mouse, pen, and touch pointers. Mouse and pen input draw automatically, while one-finger gestures scroll the page unless **Touch drawing** is enabled in the notebook toolbar. The global preference applies to every drawing cell, is remembered in the current browser, and defaults to off.
+
+Each canvas accepts one active drawing pointer, captures it for the full stroke, ignores palm and additional touch input while drawing, and prevents page scrolling only for accepted strokes. Single taps still create dots, leaving the canvas no longer ends a captured stroke, and the bitmap is saved once when the stroke finishes or pointer capture is cancelled.
+
+Pen and eraser widths respond to pressure when a device reports it. Mouse and finger strokes keep the selected fixed width. Coalesced pointer samples are used when supported to make fast pen strokes smoother without changing the existing PNG data URL storage format.
 
 ### Why This Comes Before A Drawing Rewrite
 
@@ -517,9 +523,10 @@ avoid page scrolling while actively drawing
 Later:
 
 ```text
-pressure-sensitive brush size
-eraser support
-palm rejection behavior if feasible
+tilt-aware brushes
+stylus barrel-button behavior
+high-DPI canvas backing storage
+device testing across iPadOS, Android, and Windows pen hardware
 ```
 
 ### Suggested Checkpoints

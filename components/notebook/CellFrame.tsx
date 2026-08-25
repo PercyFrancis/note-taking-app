@@ -19,6 +19,7 @@ interface CellFrameProps {
   findQuery: string;
   textSelection: TextSelectionRequest | null;
   markdownInsertion: MarkdownInsertionRequest | null;
+  isTouchDrawingEnabled: boolean;
   onUpdateTextCell: (cellId: string, content: string) => void;
   onUpdateDrawingCell: (cellId: string, drawing: string | null) => void;
   onUpdateCellHeight: (cellId: string, heightPx: number) => void;
@@ -40,6 +41,7 @@ export default function CellFrame({
   findQuery,
   textSelection,
   markdownInsertion,
+  isTouchDrawingEnabled,
   onUpdateTextCell,
   onUpdateDrawingCell,
   onUpdateCellHeight,
@@ -184,6 +186,7 @@ export default function CellFrame({
       ) : (
         <DrawingCellEditor
           cell={cell}
+          isTouchDrawingEnabled={isTouchDrawingEnabled}
           onChange={(drawing) => onUpdateDrawingCell(cell.id, drawing)}
         />
       )}

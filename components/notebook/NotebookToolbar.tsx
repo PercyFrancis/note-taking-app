@@ -15,6 +15,8 @@ interface NotebookToolbarProps {
   onRedo: () => void;
   onAddTextCell: () => void;
   onAddDrawingCell: () => void;
+  isTouchDrawingEnabled: boolean;
+  onToggleTouchDrawing: () => void;
   onOpenFind: () => void;
   onOpenImageLibrary: () => void;
   onExportNotebooks: () => void;
@@ -30,6 +32,8 @@ export default function NotebookToolbar({
   onRedo,
   onAddTextCell,
   onAddDrawingCell,
+  isTouchDrawingEnabled,
+  onToggleTouchDrawing,
   onOpenFind,
   onOpenImageLibrary,
   onExportNotebooks,
@@ -79,6 +83,20 @@ export default function NotebookToolbar({
         className={primaryButtonClass}
       >
         Add drawing cell
+      </button>
+
+      <button
+        type="button"
+        onClick={onToggleTouchDrawing}
+        aria-pressed={isTouchDrawingEnabled}
+        className={`inline-flex h-10 items-center justify-center rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2 ${
+          isTouchDrawingEnabled
+            ? "border-sky-600 bg-sky-600 text-white hover:bg-sky-700"
+            : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+        }`}
+        title="When off, one-finger gestures scroll over drawing cells"
+      >
+        Touch drawing: {isTouchDrawingEnabled ? "On" : "Off"}
       </button>
 
       <button

@@ -14,6 +14,7 @@ interface CellListProps {
   findQuery: string;
   textSelection: TextSelectionRequest | null;
   markdownInsertion: MarkdownInsertionRequest | null;
+  isTouchDrawingEnabled: boolean;
   onUpdateTextCell: (cellId: string, content: string) => void;
   onUpdateDrawingCell: (cellId: string, drawing: string | null) => void;
   onUpdateCellHeight: (cellId: string, heightPx: number) => void;
@@ -35,6 +36,7 @@ export default function CellList({
   findQuery,
   textSelection,
   markdownInsertion,
+  isTouchDrawingEnabled,
   onUpdateTextCell,
   onUpdateDrawingCell,
   onUpdateCellHeight,
@@ -79,6 +81,7 @@ export default function CellList({
             markdownInsertion={
               markdownInsertion?.cellId === cell.id ? markdownInsertion : null
             }
+            isTouchDrawingEnabled={isTouchDrawingEnabled}
             onUpdateTextCell={onUpdateTextCell}
             onUpdateDrawingCell={onUpdateDrawingCell}
             onUpdateCellHeight={onUpdateCellHeight}

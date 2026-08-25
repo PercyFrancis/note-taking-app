@@ -6,6 +6,7 @@ import { smallDangerButtonClass } from "../ui/buttonStyles";
 
 interface DrawingCellEditorProps {
   cell: DrawingCell;
+  isTouchDrawingEnabled: boolean;
   onChange: (drawing: string | null) => void;
 }
 
@@ -17,80 +18,103 @@ const colorOptions = [
   { name: "Yellow", value: "#eab308" },
 ];
 
+interface CanvasPoint {
+  x: number;
+  y: number;
+}
+
 export default function DrawingCellEditor({
   cell,
+  isTouchDrawingEnabled,
   onChange,
 }: DrawingCellEditorProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const isDrawingRef = useRef(false);
-  const lastPointRef = useRef<{ x: number; y: number } | null>(null);
+  const activePointerIdRef = useRef<number | null>(null);
+  const lastPointRef = useRef<CanvasPoint | null>(null);
   const skipNextRestoreRef = useRef(false);
 
   const [tool, setTool] = useState<"pen" | "eraser">("pen");
   const [color, setColor] = useState("#0f172a");
   const [brushSize, setBrushSize] = useState(4);
+  const [isActivelyDrawing, setIsActivelyDrawing] = useState(false);
 
   const canvasWidth = 900;
   const canvasHeight = cell.heightPx;
 
+  function shouldAcceptPointer(
+    event: React.PointerEvent<HTMLCanvasElement>,
+  ): boolean {
+    if (
+      !event.isPrimary ||
+      event.button !== 0 ||
+      activePointerIdRef.current !== null
+    ) {
+      return false;
+    }
+
+    return event.pointerType !== "touch" || isTouchDrawingEnabled;
+  }
+
   function startDrawing(event: React.PointerEvent<HTMLCanvasElement>) {
-    if (!event.isPrimary || event.button !== 0) return;
+    if (!shouldAcceptPointer(event)) return;
 
-    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
 
-    const point = getCanvasPoint(event);
-
-    isDrawingRef.current = true;
-    lastPointRef.current = point;
-
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    const canvas = event.currentTarget;
 
     const context = canvas.getContext("2d");
     if (!context) return;
 
-    configureContext(context);
+    canvas.setPointerCapture(event.pointerId);
+    activePointerIdRef.current = event.pointerId;
+    setIsActivelyDrawing(true);
+
+    const point = getCanvasPoint(event.nativeEvent, canvas);
+    const strokeWidth = getStrokeWidth(event.nativeEvent);
+
+    lastPointRef.current = point;
+    configureContext(context, strokeWidth);
 
     context.beginPath();
-    context.arc(point.x, point.y, brushSize / 2, 0, Math.PI * 2);
+    context.arc(point.x, point.y, strokeWidth / 2, 0, Math.PI * 2);
     context.fill();
   }
 
   function draw(event: React.PointerEvent<HTMLCanvasElement>) {
-    if (!isDrawingRef.current) return;
+    if (activePointerIdRef.current !== event.pointerId) return;
 
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    event.preventDefault();
+
+    const canvas = event.currentTarget;
 
     const context = canvas.getContext("2d");
     if (!context) return;
 
-    const currentPoint = getCanvasPoint(event);
-    const lastPoint = lastPointRef.current;
+    const coalescedEvents = event.nativeEvent.getCoalescedEvents?.() ?? [];
+    const samples =
+      coalescedEvents.length > 0 ? coalescedEvents : [event.nativeEvent];
 
-    if (!lastPoint) return;
+    for (const sample of samples) {
+      const currentPoint = getCanvasPoint(sample, canvas);
+      const lastPoint = lastPointRef.current;
 
-    context.lineWidth = brushSize;
-    context.lineCap = "round";
-    context.lineJoin = "round";
+      if (!lastPoint) {
+        lastPointRef.current = currentPoint;
+        continue;
+      }
 
-    if (tool === "eraser") {
-      context.globalCompositeOperation = "destination-out";
-    } else {
-      context.globalCompositeOperation = "source-over";
-      context.strokeStyle = color;
+      configureContext(context, getStrokeWidth(sample));
+
+      context.beginPath();
+      context.moveTo(lastPoint.x, lastPoint.y);
+      context.lineTo(currentPoint.x, currentPoint.y);
+      context.stroke();
+
+      lastPointRef.current = currentPoint;
     }
-
-    context.beginPath();
-    context.moveTo(lastPoint.x, lastPoint.y);
-    context.lineTo(currentPoint.x, currentPoint.y);
-    context.stroke();
-
-    lastPointRef.current = currentPoint;
   }
 
-  function getCanvasPoint(event: React.PointerEvent<HTMLCanvasElement>) {
-    const canvas = event.currentTarget;
+  function getCanvasPoint(event: PointerEvent, canvas: HTMLCanvasElement) {
     const rect = canvas.getBoundingClientRect();
 
     return {
@@ -99,18 +123,36 @@ export default function DrawingCellEditor({
     };
   }
 
-  function stopDrawing(event: React.PointerEvent<HTMLCanvasElement>) {
-    if (!isDrawingRef.current) return;
-
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
+  function getStrokeWidth(event: PointerEvent): number {
+    if (event.pointerType !== "pen") {
+      return brushSize;
     }
 
-    isDrawingRef.current = false;
-    lastPointRef.current = null;
+    const pressure = event.pressure > 0 ? event.pressure : 0.5;
+    const pressureMultiplier = 0.35 + pressure * 1.3;
 
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    return Math.max(0.5, brushSize * pressureMultiplier);
+  }
+
+  function stopDrawing(event: React.PointerEvent<HTMLCanvasElement>) {
+    if (activePointerIdRef.current !== event.pointerId) return;
+
+    event.preventDefault();
+    finishDrawing(event.currentTarget, event.pointerId, true);
+  }
+
+  function finishDrawing(
+    canvas: HTMLCanvasElement,
+    pointerId: number,
+    shouldReleaseCapture: boolean,
+  ) {
+    activePointerIdRef.current = null;
+    lastPointRef.current = null;
+    setIsActivelyDrawing(false);
+
+    if (shouldReleaseCapture && canvas.hasPointerCapture(pointerId)) {
+      canvas.releasePointerCapture(pointerId);
+    }
 
     const dataUrl = canvas.toDataURL("image/png");
 
@@ -158,8 +200,11 @@ export default function DrawingCellEditor({
     onChange(null);
   }
 
-  function configureContext(context: CanvasRenderingContext2D) {
-    context.lineWidth = brushSize;
+  function configureContext(
+    context: CanvasRenderingContext2D,
+    strokeWidth: number,
+  ) {
+    context.lineWidth = strokeWidth;
     context.lineCap = "round";
     context.lineJoin = "round";
 
@@ -200,6 +245,7 @@ export default function DrawingCellEditor({
         >
           Eraser
         </button>
+
         <div className="flex items-center gap-1">
           {colorOptions.map((option) => (
             <button
@@ -264,13 +310,22 @@ export default function DrawingCellEditor({
         onPointerDown={startDrawing}
         onPointerMove={draw}
         onPointerUp={stopDrawing}
-        onPointerLeave={stopDrawing}
         onPointerCancel={stopDrawing}
-        className="block w-full touch-none rounded-md border border-slate-300 bg-white"
+        onLostPointerCapture={(event) => {
+          if (activePointerIdRef.current === event.pointerId) {
+            finishDrawing(event.currentTarget, event.pointerId, false);
+          }
+        }}
+        className={`block w-full rounded-md border border-slate-300 bg-white ${
+          isTouchDrawingEnabled || isActivelyDrawing
+            ? "touch-none"
+            : "touch-pan-y"
+        }`}
       />
 
       <p className="mt-2 text-xs text-slate-400">
-        {cell.drawing ? "Drawing saved" : "Empty drawing"}
+        {cell.drawing ? "Drawing saved" : "Empty drawing"} | Pen pressure is
+        automatic when supported.
       </p>
     </div>
   );

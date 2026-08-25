@@ -12,6 +12,8 @@ import type {
   TextSelectionRequest,
 } from "@/lib/types";
 
+const TOUCH_DRAWING_STORAGE_KEY = "note-taking-app:draw-with-touch";
+
 interface NotebookEditorProps {
   notebook: Notebook;
   notebooks: Notebook[];
@@ -87,6 +89,7 @@ export default function NotebookEditor({
 }: NotebookEditorProps) {
   const [isFindOpen, setIsFindOpen] = useState(false);
   const [isImageLibraryOpen, setIsImageLibraryOpen] = useState(false);
+  const [isTouchDrawingEnabled, setIsTouchDrawingEnabled] = useState(false);
   const [findFocusRequestId, setFindFocusRequestId] = useState(0);
   const [findQuery, setFindQuery] = useState("");
   const [selectedCellId, setSelectedCellId] = useState<string | null>(null);
@@ -96,6 +99,33 @@ export default function NotebookEditor({
   const insertionRequestIdRef = useRef(0);
   const [markdownInsertion, setMarkdownInsertion] =
     useState<MarkdownInsertionRequest | null>(null);
+
+  useEffect(() => {
+    try {
+      setIsTouchDrawingEnabled(
+        window.localStorage.getItem(TOUCH_DRAWING_STORAGE_KEY) === "true",
+      );
+    } catch {
+      // Drawing still works with the default when browser storage is blocked.
+    }
+  }, []);
+
+  function toggleTouchDrawing() {
+    setIsTouchDrawingEnabled((currentValue) => {
+      const nextValue = !currentValue;
+
+      try {
+        window.localStorage.setItem(
+          TOUCH_DRAWING_STORAGE_KEY,
+          String(nextValue),
+        );
+      } catch {
+        // The in-memory preference remains useful for this session.
+      }
+
+      return nextValue;
+    });
+  }
 
   function openFind() {
     setIsFindOpen(true);
@@ -253,6 +283,8 @@ export default function NotebookEditor({
             onRedo={onRedo}
             onAddTextCell={onAddTextCell}
             onAddDrawingCell={onAddDrawingCell}
+            isTouchDrawingEnabled={isTouchDrawingEnabled}
+            onToggleTouchDrawing={toggleTouchDrawing}
             onOpenFind={openFind}
             onOpenImageLibrary={() => setIsImageLibraryOpen(true)}
             onExportNotebooks={onExportNotebooks}
@@ -283,6 +315,7 @@ export default function NotebookEditor({
         findQuery={findQuery}
         textSelection={textSelection}
         markdownInsertion={markdownInsertion}
+        isTouchDrawingEnabled={isTouchDrawingEnabled}
         onUpdateTextCell={onUpdateTextCell}
         onUpdateDrawingCell={onUpdateDrawingCell}
         onUpdateCellHeight={onUpdateCellHeight}
