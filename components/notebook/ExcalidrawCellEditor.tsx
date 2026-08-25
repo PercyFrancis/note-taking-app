@@ -2,12 +2,16 @@
 
 import "@excalidraw/excalidraw/index.css";
 import { useAuth } from "@clerk/nextjs";
-import type { OrderedExcalidrawElement } from "@excalidraw/excalidraw/element/types";
+import type {
+  FileId,
+  OrderedExcalidrawElement,
+} from "@excalidraw/excalidraw/element/types";
 import type {
   AppState,
   BinaryFileData,
   BinaryFiles,
   DataURL,
+  ExcalidrawImperativeAPI,
   ExcalidrawInitialDataState,
   ExcalidrawProps,
 } from "@excalidraw/excalidraw/types";
@@ -20,7 +24,11 @@ import {
   MAX_IMAGE_SIZE_BYTES,
   sanitizeImageFilename,
 } from "@/lib/attachments";
-import type { ExcalidrawCell } from "@/lib/types";
+import type {
+  ExcalidrawCell,
+  ExcalidrawImageInsertionRequest,
+} from "@/lib/types";
+import { createId } from "@/lib/utils";
 import { secondaryButtonClass } from "../ui/buttonStyles";
 
 const Excalidraw = dynamic(
@@ -45,6 +53,7 @@ interface StoredExcalidrawScene {
 
 interface ExcalidrawCellEditorProps {
   cell: ExcalidrawCell;
+  imageInsertion: ExcalidrawImageInsertionRequest | null;
   onChange: (drawing: string) => void;
 }
 
@@ -62,6 +71,40 @@ const IMAGE_EXTENSION_BY_CONTENT_TYPE: Record<string, string> = {
   "image/webp": "webp",
   "image/gif": "gif",
 };
+
+const IMAGE_CONTENT_TYPE_BY_EXTENSION: Record<
+  string,
+  BinaryFileData["mimeType"]
+> = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+  gif: "image/gif",
+};
+
+function getImageContentType(filename: string): BinaryFileData["mimeType"] {
+  const extension = filename.split(".").pop()?.toLowerCase() ?? "";
+  return IMAGE_CONTENT_TYPE_BY_EXTENSION[extension] ?? "image/png";
+}
+
+function loadImageDimensions(
+  url: string,
+): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+
+    image.onload = () => {
+      resolve({
+        width: image.naturalWidth || 1,
+        height: image.naturalHeight || 1,
+      });
+    };
+    image.onerror = () =>
+      reject(new Error("Could not load the library image."));
+    image.src = url;
+  });
+}
 
 function parseScene(drawing: string | null): ExcalidrawInitialDataState | null {
   if (!drawing) return null;
@@ -89,12 +132,15 @@ function parseScene(drawing: string | null): ExcalidrawInitialDataState | null {
 
 export default function ExcalidrawCellEditor({
   cell,
+  imageInsertion,
   onChange,
 }: ExcalidrawCellEditorProps) {
   const { userId } = useAuth();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [imageUploadError, setImageUploadError] = useState("");
+  const [excalidrawApi, setExcalidrawApi] =
+    useState<ExcalidrawImperativeAPI | null>(null);
   const [initialData] = useState(() => parseScene(cell.drawing));
   const onChangeRef = useRef(onChange);
   const userIdRef = useRef(userId);
@@ -102,6 +148,8 @@ export default function ExcalidrawCellEditor({
   const lastSerializedSceneRef = useRef(cell.drawing);
   const sceneRevisionRef = useRef(0);
   const pendingUploadCountRef = useRef(0);
+  const handledImageInsertionRequestIdRef = useRef<number | null>(null);
+  const insertingImageRequestIdRef = useRef<number | null>(null);
   const hostedFilePromisesRef = useRef(
     new Map<string, Promise<BinaryFileData>>(),
   );
@@ -136,6 +184,100 @@ export default function ExcalidrawCellEditor({
     window.addEventListener("keydown", closeOnEscape, true);
     return () => window.removeEventListener("keydown", closeOnEscape, true);
   }, [isFullscreen]);
+
+  useEffect(() => {
+    if (
+      !excalidrawApi ||
+      !imageInsertion ||
+      imageInsertion.cellId !== cell.id ||
+      handledImageInsertionRequestIdRef.current === imageInsertion.requestId ||
+      insertingImageRequestIdRef.current === imageInsertion.requestId
+    ) {
+      return;
+    }
+
+    insertingImageRequestIdRef.current = imageInsertion.requestId;
+    let isCancelled = false;
+
+    void Promise.all([
+      loadImageDimensions(imageInsertion.image.url),
+      import("@excalidraw/excalidraw"),
+    ])
+      .then(([{ width: naturalWidth, height: naturalHeight }, excalidraw]) => {
+        if (isCancelled) return;
+
+        const maximumWidth = 520;
+        const maximumHeight = 360;
+        const scale = Math.min(
+          1,
+          maximumWidth / naturalWidth,
+          maximumHeight / naturalHeight,
+        );
+        const width = Math.max(1, naturalWidth * scale);
+        const height = Math.max(1, naturalHeight * scale);
+        const appState = excalidrawApi.getAppState();
+        const zoom = appState.zoom.value;
+        const centerX = appState.width / (2 * zoom) - appState.scrollX;
+        const centerY = appState.height / (2 * zoom) - appState.scrollY;
+        const fileId = createId() as FileId;
+        const [imageElement] = excalidraw.convertToExcalidrawElements(
+          [
+            {
+              type: "image",
+              x: centerX - width / 2,
+              y: centerY - height / 2,
+              width,
+              height,
+              fileId,
+              status: "saved",
+            },
+          ],
+          { regenerateIds: true },
+        );
+
+        excalidrawApi.addFiles([
+          {
+            id: fileId,
+            mimeType: getImageContentType(
+              imageInsertion.image.originalFilename,
+            ),
+            dataURL: imageInsertion.image.url as DataURL,
+            created: imageInsertion.image.uploadedAt,
+            lastRetrieved: Date.now(),
+          },
+        ]);
+        excalidrawApi.updateScene({
+          elements: [
+            ...excalidrawApi.getSceneElementsIncludingDeleted(),
+            imageElement,
+          ],
+          appState: {
+            selectedElementIds: { [imageElement.id]: true },
+          },
+          captureUpdate: excalidraw.CaptureUpdateAction.IMMEDIATELY,
+        });
+        handledImageInsertionRequestIdRef.current = imageInsertion.requestId;
+        insertingImageRequestIdRef.current = null;
+        setImageUploadError("");
+      })
+      .catch((error: unknown) => {
+        if (isCancelled) return;
+
+        setImageUploadError(
+          error instanceof Error
+            ? error.message
+            : "Could not insert the library image.",
+        );
+        insertingImageRequestIdRef.current = null;
+      });
+
+    return () => {
+      isCancelled = true;
+      if (insertingImageRequestIdRef.current === imageInsertion.requestId) {
+        insertingImageRequestIdRef.current = null;
+      }
+    };
+  }, [cell.id, excalidrawApi, imageInsertion]);
 
   const getHostedFile = useCallback(
     (file: BinaryFileData): Promise<BinaryFileData> => {
@@ -220,8 +362,39 @@ export default function ExcalidrawCellEditor({
       const revision = sceneRevisionRef.current + 1;
       sceneRevisionRef.current = revision;
 
+      const persistHostedScene = (hostedFiles: BinaryFiles) => {
+        const scene: StoredExcalidrawScene = {
+          version: 1,
+          source: "excalidraw",
+          elements,
+          appState: {
+            viewBackgroundColor: appState.viewBackgroundColor,
+          },
+          files: hostedFiles,
+        };
+        const serializedScene = JSON.stringify(scene);
+
+        if (serializedScene === lastSerializedSceneRef.current) {
+          return;
+        }
+
+        lastSerializedSceneRef.current = serializedScene;
+        setImageUploadError("");
+        onChangeRef.current(serializedScene);
+      };
+
+      const fileEntries = Object.entries(files);
+      const hasUnhostedImage = fileEntries.some(([, file]) =>
+        file.dataURL.startsWith("data:"),
+      );
+
+      if (!hasUnhostedImage) {
+        persistHostedScene(files);
+        return;
+      }
+
       void Promise.all(
-        Object.entries(files).map(
+        fileEntries.map(
           async ([fileId, file]) =>
             [fileId, await getHostedFile(file)] as const,
         ),
@@ -231,24 +404,9 @@ export default function ExcalidrawCellEditor({
             return;
           }
 
-          const scene: StoredExcalidrawScene = {
-            version: 1,
-            source: "excalidraw",
-            elements,
-            appState: {
-              viewBackgroundColor: appState.viewBackgroundColor,
-            },
-            files: Object.fromEntries(hostedFileEntries) as BinaryFiles,
-          };
-          const serializedScene = JSON.stringify(scene);
-
-          if (serializedScene === lastSerializedSceneRef.current) {
-            return;
-          }
-
-          lastSerializedSceneRef.current = serializedScene;
-          setImageUploadError("");
-          onChangeRef.current(serializedScene);
+          persistHostedScene(
+            Object.fromEntries(hostedFileEntries) as BinaryFiles,
+          );
         })
         .catch((error: unknown) => {
           if (!isMountedRef.current) return;
@@ -306,6 +464,7 @@ export default function ExcalidrawCellEditor({
       >
         <Excalidraw
           initialData={initialData}
+          excalidrawAPI={setExcalidrawApi}
           onChange={persistScene}
           autoFocus={false}
           handleKeyboardGlobally={false}

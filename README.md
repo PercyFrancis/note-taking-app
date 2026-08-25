@@ -20,13 +20,13 @@ Do not commit the real Blob token. The placeholder in `.env.example` only docume
 
 The app accepts JPEG, PNG, WebP, and GIF images up to 10 MB. Uploads go directly from the browser to Vercel Blob using a short-lived token issued only after the app verifies that the signed-in user owns the target text cell. Private images are displayed through an authenticated app route.
 
-Use **Image library** in the notebook toolbar to browse every image uploaded by the signed-in user. The library is sorted newest first and supports filename search, pagination, full-size previews, copying the authenticated URL or complete Markdown, and inserting an existing image at the selected text cell's last caret position. Images whose original upload cell no longer exists remain available and are labeled **Unattached**.
+Use **Image library** in the notebook toolbar to browse every image uploaded by the signed-in user. The library is sorted newest first and supports filename search, pagination, full-size previews, copying the authenticated URL or complete Markdown, and inserting an existing image into the selected text or Excalidraw cell. Text insertion uses the cell's last caret position. Excalidraw insertion places and selects a native image element near the current viewport center while reusing the existing authenticated URL, so it does not upload a duplicate. Images whose original upload cell no longer exists remain available and are labeled **Unattached**.
 
 The authenticated URLs copied by the library are recoverable note references, not public sharing links. They only render when the image owner is signed in.
 
-The library lists Blob metadata directly and does not require an attachments database table. It loads up to 20,000 images; if an account grows beyond that, the UI reports the limit and a database-backed attachment index should be added.
+The library synchronizes Blob metadata into the `image_attachments` database table. Existing Blob uploads are indexed automatically when the library opens, including uploads whose original cell has been deleted. Blob listing currently synchronizes up to 20,000 objects per request and reports if that limit is reached.
 
-Removing an image reference or deleting its text/Excalidraw cell does not delete the underlying Blob. The image library deliberately does not provide permanent deletion yet because an image may still be referenced by another cell, an export, or redo history. JSON exports preserve image references but do not copy the files, and another user cannot access the original owner's private images.
+Renaming an image changes only its display name; its pathname and authenticated URL remain stable, so existing Markdown and Excalidraw references keep working. Deleting an image first moves it to Trash without disabling its URL. Trashed images can be restored. After 30 days, unreferenced images are removed from Blob storage when the library next synchronizes. Referenced images remain protected, and manual permanent deletion reports the notebook cells that still use the image. JSON exports preserve image references but do not copy the files, and another user cannot access the original owner's private images.
 
 ## Mobile And Stylus Drawing
 

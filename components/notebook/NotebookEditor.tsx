@@ -5,11 +5,13 @@ import ImageLibraryDialog from "@/components/notebook/ImageLibraryDialog";
 import NotebookFindReplace from "@/components/notebook/NotebookFindReplace";
 import NotebookToolbar from "@/components/notebook/NotebookToolbar";
 import type {
+  ExcalidrawImageInsertionRequest,
   MarkdownInsertionRequest,
   Notebook,
   NotebookUpdate,
   TextCellMatch,
   TextSelectionRequest,
+  UploadedImage,
 } from "@/lib/types";
 
 const TOUCH_DRAWING_STORAGE_KEY = "note-taking-app:draw-with-touch";
@@ -108,6 +110,8 @@ export default function NotebookEditor({
   const insertionRequestIdRef = useRef(0);
   const [markdownInsertion, setMarkdownInsertion] =
     useState<MarkdownInsertionRequest | null>(null);
+  const [excalidrawImageInsertion, setExcalidrawImageInsertion] =
+    useState<ExcalidrawImageInsertionRequest | null>(null);
 
   useEffect(() => {
     try {
@@ -359,6 +363,7 @@ export default function NotebookEditor({
         findQuery={findQuery}
         textSelection={textSelection}
         markdownInsertion={markdownInsertion}
+        excalidrawImageInsertion={excalidrawImageInsertion}
         isTouchDrawingEnabled={isTouchDrawingEnabled}
         showLegacyDrawingControls={showLegacyDrawingControls}
         onUpdateTextCell={onUpdateTextCell}
@@ -384,11 +389,27 @@ export default function NotebookEditor({
               ? selectedCellId
               : null
           }
-          onInsert={(cellId, markdown) => {
+          selectedExcalidrawCellId={
+            notebook.cells.find((cell) => cell.id === selectedCellId)?.type ===
+            "excalidraw"
+              ? selectedCellId
+              : null
+          }
+          onInsertIntoText={(cellId, markdown) => {
             insertionRequestIdRef.current += 1;
             setMarkdownInsertion({
               cellId,
               markdown,
+              requestId: insertionRequestIdRef.current,
+            });
+            setSelectedCellId(cellId);
+            setIsImageLibraryOpen(false);
+          }}
+          onInsertIntoDrawing={(cellId, image: UploadedImage) => {
+            insertionRequestIdRef.current += 1;
+            setExcalidrawImageInsertion({
+              cellId,
+              image,
               requestId: insertionRequestIdRef.current,
             });
             setSelectedCellId(cellId);

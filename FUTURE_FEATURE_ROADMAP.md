@@ -224,7 +224,7 @@ normally opens browser find. If you override it, your app's find feature should 
 
 The implementation uses private Vercel Blob storage with authenticated client uploads and authenticated image delivery. It accepts JPEG, PNG, WebP, and GIF files up to 10 MB, inserts Markdown at the current cursor position, uses the filename for default alt text, and displays upload progress.
 
-An authenticated image library in the notebook toolbar lists the signed-in user's uploads directly from Blob storage. It provides newest-first thumbnails, filename search, pagination, source notebook/cell labels when available, recovery of images from deleted cells, URL and Markdown copying, previews, and insertion into the selected text cell. Permanent deletion remains deferred until attachment references can be tracked safely.
+An authenticated image library in the notebook toolbar lists the signed-in user's uploads through a database-backed attachment index synchronized from Blob storage. It provides newest-first thumbnails, display-name search and renaming, pagination, source notebook/cell labels when available, recovery of images from deleted cells, URL and Markdown copying, previews, Trash and restore, and insertion into the selected text or Excalidraw cell. Renaming preserves the Blob pathname and URL. Direct Excalidraw insertion reuses the existing private image URL instead of downloading and reuploading the file. Trashed files retain working links for 30 days; unreferenced expired files are removed during library synchronization, while referenced files remain protected and report their current notebook locations before permanent deletion.
 
 Setup and current limitations are documented in [README.md](./README.md#private-image-storage).
 

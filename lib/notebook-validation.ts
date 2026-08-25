@@ -1,4 +1,5 @@
 import type {
+  AttachmentMutationResponse,
   CellResponse,
   CreateCellInput,
   CreateNotebookInput,
@@ -195,13 +196,26 @@ export function isUploadedImagesResponse(
   return value.images.every(
     (image) =>
       isRecord(image) &&
+      typeof image.id === "string" &&
+      isUuid(image.id) &&
       typeof image.pathname === "string" &&
       typeof image.url === "string" &&
       typeof image.filename === "string" &&
+      typeof image.originalFilename === "string" &&
       typeof image.size === "number" &&
       typeof image.uploadedAt === "number" &&
-      typeof image.cellId === "string" &&
-      isUuid(image.cellId),
+      (image.cellId === null ||
+        (typeof image.cellId === "string" && isUuid(image.cellId))) &&
+      (image.trashedAt === null || typeof image.trashedAt === "number"),
+  );
+}
+
+export function isAttachmentMutationResponse(
+  value: unknown,
+): value is AttachmentMutationResponse {
+  return (
+    isRecord(value) &&
+    isUploadedImagesResponse({ images: [value.image], truncated: false })
   );
 }
 

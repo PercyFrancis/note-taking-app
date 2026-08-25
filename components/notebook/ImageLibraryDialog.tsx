@@ -3,10 +3,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   secondaryButtonClass,
+  smallDangerButtonClass,
   smallSecondaryButtonClass,
 } from "@/components/ui/buttonStyles";
 import { createImageAltText } from "@/lib/attachments";
-import { loadUploadedImages } from "@/lib/client/attachment-api";
+import {
+  AttachmentReferenceError,
+  loadUploadedImages,
+  permanentlyDeleteUploadedImage,
+  renameUploadedImage,
+  restoreUploadedImage,
+  trashUploadedImage,
+} from "@/lib/client/attachment-api";
 import type { Notebook, UploadedImage } from "@/lib/types";
 
 const IMAGES_PER_PAGE = 18;
@@ -14,7 +22,9 @@ const IMAGES_PER_PAGE = 18;
 interface ImageLibraryDialogProps {
   notebooks: Notebook[];
   selectedTextCellId: string | null;
-  onInsert: (cellId: string, markdown: string) => void;
+  selectedExcalidrawCellId: string | null;
+  onInsertIntoText: (cellId: string, markdown: string) => void;
+  onInsertIntoDrawing: (cellId: string, image: UploadedImage) => void;
   onClose: () => void;
 }
 
@@ -37,7 +47,9 @@ function createImageMarkdown(image: UploadedImage): string {
 export default function ImageLibraryDialog({
   notebooks,
   selectedTextCellId,
-  onInsert,
+  selectedExcalidrawCellId,
+  onInsertIntoText,
+  onInsertIntoDrawing,
   onClose,
 }: ImageLibraryDialogProps) {
   const [images, setImages] = useState<UploadedImage[]>([]);
@@ -47,6 +59,13 @@ export default function ImageLibraryDialog({
   const [page, setPage] = useState(0);
   const [copyStatus, setCopyStatus] = useState("");
   const [isTruncated, setIsTruncated] = useState(false);
+  const [libraryStatus, setLibraryStatus] = useState<"active" | "trash">(
+    "active",
+  );
+  const [actionStatus, setActionStatus] = useState("");
+  const [busyImageId, setBusyImageId] = useState<string | null>(null);
+  const [renamingImageId, setRenamingImageId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -58,7 +77,9 @@ export default function ImageLibraryDialog({
 
     async function loadImages() {
       try {
-        const result = await loadUploadedImages();
+        setIsLoading(true);
+        setLoadError("");
+        const result = await loadUploadedImages(libraryStatus);
 
         if (!isCancelled) {
           setImages(result.images);
@@ -79,7 +100,7 @@ export default function ImageLibraryDialog({
     return () => {
       isCancelled = true;
     };
-  }, []);
+  }, [libraryStatus]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -135,6 +156,106 @@ export default function ImageLibraryDialog({
     }
   }
 
+  function replaceImage(updatedImage: UploadedImage) {
+    setImages((currentImages) =>
+      currentImages.map((image) =>
+        image.id === updatedImage.id ? updatedImage : image,
+      ),
+    );
+  }
+
+  async function renameImage(image: UploadedImage) {
+    const displayName = renameValue.trim();
+
+    if (!displayName) {
+      setActionStatus("Enter a name for the image.");
+      return;
+    }
+
+    setBusyImageId(image.id);
+    setActionStatus("");
+    try {
+      replaceImage(await renameUploadedImage(image.id, displayName));
+      setRenamingImageId(null);
+      setActionStatus("Image renamed. Existing links were not changed.");
+    } catch {
+      setActionStatus("Could not rename the image.");
+    } finally {
+      setBusyImageId(null);
+    }
+  }
+
+  async function moveImageToTrash(image: UploadedImage) {
+    if (!window.confirm(`Move “${image.filename}” to Trash?`)) return;
+
+    setBusyImageId(image.id);
+    setActionStatus("");
+    try {
+      await trashUploadedImage(image.id);
+      setImages((currentImages) =>
+        currentImages.filter((currentImage) => currentImage.id !== image.id),
+      );
+      setActionStatus("Image moved to Trash. Existing links still work.");
+    } catch {
+      setActionStatus("Could not move the image to Trash.");
+    } finally {
+      setBusyImageId(null);
+    }
+  }
+
+  async function restoreImage(image: UploadedImage) {
+    setBusyImageId(image.id);
+    setActionStatus("");
+    try {
+      await restoreUploadedImage(image.id);
+      setImages((currentImages) =>
+        currentImages.filter((currentImage) => currentImage.id !== image.id),
+      );
+      setActionStatus("Image restored to the library.");
+    } catch {
+      setActionStatus("Could not restore the image.");
+    } finally {
+      setBusyImageId(null);
+    }
+  }
+
+  async function permanentlyDeleteImage(image: UploadedImage) {
+    if (
+      !window.confirm(
+        `Permanently delete “${image.filename}”? This cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+
+    setBusyImageId(image.id);
+    setActionStatus("");
+    try {
+      await permanentlyDeleteUploadedImage(image.id);
+      setImages((currentImages) =>
+        currentImages.filter((currentImage) => currentImage.id !== image.id),
+      );
+      setActionStatus("Image permanently deleted.");
+    } catch (error) {
+      if (error instanceof AttachmentReferenceError) {
+        const locations = error.references
+          .slice(0, 4)
+          .map(
+            (reference) =>
+              `${reference.notebookTitle}, cell ${reference.cellNumber}`,
+          )
+          .join("; ");
+        setActionStatus(
+          `Deletion blocked because the image is still used in ${error.references.length} ${error.references.length === 1 ? "cell" : "cells"}${locations ? `: ${locations}` : ""}.`,
+        );
+      } else {
+        setActionStatus("Could not permanently delete the image.");
+      }
+    } finally {
+      setBusyImageId(null);
+    }
+  }
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-3 md:p-6"
@@ -164,7 +285,7 @@ export default function ImageLibraryDialog({
                 id="image-library-description"
                 className="mt-1 text-sm text-slate-600"
               >
-                Browse every private image uploaded to your account.
+                Browse, rename, recover, and safely remove your private images.
               </p>
             </div>
             <button
@@ -198,10 +319,38 @@ export default function ImageLibraryDialog({
             </p>
           </div>
 
-          {!selectedTextCellId && (
+          <div
+            className="mt-3 flex gap-2"
+            role="tablist"
+            aria-label="Image library view"
+          >
+            {(["active", "trash"] as const).map((status) => (
+              <button
+                key={status}
+                type="button"
+                role="tab"
+                aria-selected={libraryStatus === status}
+                onClick={() => {
+                  setLibraryStatus(status);
+                  setPage(0);
+                  setActionStatus("");
+                  setRenamingImageId(null);
+                }}
+                className={
+                  libraryStatus === status
+                    ? "rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white"
+                    : smallSecondaryButtonClass
+                }
+              >
+                {status === "active" ? "Library" : "Trash"}
+              </button>
+            ))}
+          </div>
+
+          {!selectedTextCellId && !selectedExcalidrawCellId && (
             <p className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
-              Select a text cell to enable image insertion. Preview and copy
-              actions are still available.
+              Select a text or Excalidraw cell to enable image insertion.
+              Preview and copy actions are still available.
             </p>
           )}
           {isTruncated && (
@@ -213,6 +362,11 @@ export default function ImageLibraryDialog({
           {copyStatus && (
             <p aria-live="polite" className="mt-3 text-sm text-slate-600">
               {copyStatus}
+            </p>
+          )}
+          {actionStatus && (
+            <p aria-live="polite" className="mt-3 text-sm text-slate-700">
+              {actionStatus}
             </p>
           )}
         </header>
@@ -231,7 +385,9 @@ export default function ImageLibraryDialog({
           {!isLoading && !loadError && filteredImages.length === 0 && (
             <p className="py-12 text-center text-sm text-slate-500">
               {images.length === 0
-                ? "You have not uploaded any images yet."
+                ? libraryStatus === "trash"
+                  ? "Trash is empty."
+                  : "You have not uploaded any images yet."
                 : "No filenames match your search."}
             </p>
           )}
@@ -239,8 +395,11 @@ export default function ImageLibraryDialog({
           {!isLoading && !loadError && visibleImages.length > 0 && (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {visibleImages.map((image) => {
-                const source = cellSources.get(image.cellId);
+                const source = image.cellId
+                  ? cellSources.get(image.cellId)
+                  : undefined;
                 const markdown = createImageMarkdown(image);
+                const isBusy = busyImageId === image.id;
 
                 return (
                   <article
@@ -269,6 +428,49 @@ export default function ImageLibraryDialog({
                       >
                         {image.filename}
                       </h3>
+                      {image.filename !== image.originalFilename && (
+                        <p
+                          className="mt-1 truncate text-xs text-slate-500"
+                          title={image.originalFilename}
+                        >
+                          Original file: {image.originalFilename}
+                        </p>
+                      )}
+                      {renamingImageId === image.id && (
+                        <form
+                          className="mt-2 flex gap-1.5"
+                          onSubmit={(event) => {
+                            event.preventDefault();
+                            void renameImage(image);
+                          }}
+                        >
+                          <input
+                            value={renameValue}
+                            onChange={(event) =>
+                              setRenameValue(event.target.value)
+                            }
+                            maxLength={120}
+                            disabled={isBusy}
+                            aria-label={`New name for ${image.filename}`}
+                            className="min-w-0 flex-1 rounded-md border border-slate-300 px-2 py-1 text-sm outline-none focus-visible:ring-2 focus-visible:ring-slate-500"
+                          />
+                          <button
+                            type="submit"
+                            disabled={isBusy}
+                            className={smallSecondaryButtonClass}
+                          >
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isBusy}
+                            onClick={() => setRenamingImageId(null)}
+                            className={smallSecondaryButtonClass}
+                          >
+                            Cancel
+                          </button>
+                        </form>
+                      )}
                       <p className="mt-1 text-xs text-slate-500">
                         {formatFileSize(image.size)} |{" "}
                         {new Date(image.uploadedAt).toLocaleString()}
@@ -278,6 +480,12 @@ export default function ImageLibraryDialog({
                           ? `${source.notebookTitle} | Cell ${source.cellNumber}`
                           : "Unattached"}
                       </p>
+                      {image.trashedAt !== null && (
+                        <p className="mt-1 text-xs text-amber-700">
+                          Trashed {new Date(image.trashedAt).toLocaleString()} |
+                          links remain active for 30 days and while referenced
+                        </p>
+                      )}
 
                       <div className="mt-3 flex flex-wrap gap-1.5">
                         <a
@@ -309,18 +517,78 @@ export default function ImageLibraryDialog({
                         >
                           Copy Markdown
                         </button>
-                        <button
-                          type="button"
-                          className={smallSecondaryButtonClass}
-                          disabled={!selectedTextCellId}
-                          onClick={() => {
-                            if (selectedTextCellId) {
-                              onInsert(selectedTextCellId, markdown);
-                            }
-                          }}
-                        >
-                          Insert
-                        </button>
+                        {libraryStatus === "active" ? (
+                          <>
+                            <button
+                              type="button"
+                              className={smallSecondaryButtonClass}
+                              disabled={isBusy}
+                              onClick={() => {
+                                setRenamingImageId(image.id);
+                                setRenameValue(image.filename);
+                              }}
+                            >
+                              Rename
+                            </button>
+                            <button
+                              type="button"
+                              className={smallSecondaryButtonClass}
+                              disabled={!selectedTextCellId || isBusy}
+                              onClick={() => {
+                                if (selectedTextCellId) {
+                                  onInsertIntoText(
+                                    selectedTextCellId,
+                                    markdown,
+                                  );
+                                }
+                              }}
+                            >
+                              Insert into text
+                            </button>
+                            <button
+                              type="button"
+                              className={smallSecondaryButtonClass}
+                              disabled={!selectedExcalidrawCellId || isBusy}
+                              onClick={() => {
+                                if (selectedExcalidrawCellId) {
+                                  onInsertIntoDrawing(
+                                    selectedExcalidrawCellId,
+                                    image,
+                                  );
+                                }
+                              }}
+                            >
+                              Insert into drawing
+                            </button>
+                            <button
+                              type="button"
+                              className={smallDangerButtonClass}
+                              disabled={isBusy}
+                              onClick={() => void moveImageToTrash(image)}
+                            >
+                              Trash
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              className={smallSecondaryButtonClass}
+                              disabled={isBusy}
+                              onClick={() => void restoreImage(image)}
+                            >
+                              Restore
+                            </button>
+                            <button
+                              type="button"
+                              className={smallDangerButtonClass}
+                              disabled={isBusy}
+                              onClick={() => void permanentlyDeleteImage(image)}
+                            >
+                              Delete permanently
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
                   </article>

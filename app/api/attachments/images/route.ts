@@ -1,13 +1,19 @@
 import { auth } from "@clerk/nextjs/server";
-import { list } from "@vercel/blob";
-import { createPrivateImageUrl } from "@/lib/attachments";
-import type { UploadedImage } from "@/lib/types";
+import { del, list } from "@vercel/blob";
+import {
+  type AttachmentIndexEntry,
+  deleteAttachmentRecord,
+  getAttachments,
+  getExpiredUnreferencedAttachments,
+  synchronizeAttachmentIndex,
+} from "@/lib/server/attachment-repository";
+import { getCurrentUserId } from "@/lib/server/current-user";
 import { isUuid } from "@/lib/utils";
 
 const BLOBS_PER_REQUEST = 1000;
 const MAX_LIST_REQUESTS = 20;
 
-export async function GET() {
+export async function GET(request: Request) {
   const { userId: clerkUserId } = await auth();
 
   if (!clerkUserId) {
@@ -22,7 +28,13 @@ export async function GET() {
   }
 
   const prefix = `users/${clerkUserId}/images/`;
-  const images: UploadedImage[] = [];
+  const status = new URL(request.url).searchParams.get("status");
+
+  if (status !== null && status !== "active" && status !== "trash") {
+    return Response.json({ error: "Invalid library status" }, { status: 400 });
+  }
+
+  const indexEntries: AttachmentIndexEntry[] = [];
   let cursor: string | undefined;
   let hasMore = true;
   let requestCount = 0;
@@ -50,9 +62,8 @@ export async function GET() {
           continue;
         }
 
-        images.push({
+        indexEntries.push({
           pathname: blob.pathname,
-          url: createPrivateImageUrl(blob.pathname),
           filename,
           size: blob.size,
           uploadedAt: blob.uploadedAt.getTime(),
@@ -65,7 +76,22 @@ export async function GET() {
       requestCount += 1;
     }
 
-    images.sort((left, right) => right.uploadedAt - left.uploadedAt);
+    const appUserId = await getCurrentUserId();
+    await synchronizeAttachmentIndex(appUserId, indexEntries);
+    const expiredImages = await getExpiredUnreferencedAttachments(appUserId);
+
+    await Promise.all(
+      expiredImages.map(async (image) => {
+        try {
+          await del(image.pathname);
+          await deleteAttachmentRecord(appUserId, image.id);
+        } catch {
+          // Keep the index row so cleanup can be retried next time.
+        }
+      }),
+    );
+
+    const images = await getAttachments(appUserId, status ?? "active");
 
     return Response.json({
       images,

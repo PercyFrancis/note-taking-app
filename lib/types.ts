@@ -116,12 +116,22 @@ export interface CellResponse {
 }
 
 export interface UploadedImage {
+  id: string;
   pathname: string;
   url: string;
   filename: string;
+  originalFilename: string;
   size: number;
   uploadedAt: number;
+  cellId: string | null;
+  trashedAt: number | null;
+}
+
+export interface ImageReference {
+  notebookTitle: string;
   cellId: string;
+  cellType: "text" | "excalidraw";
+  cellNumber: number;
 }
 
 export interface UploadedImagesResponse {
@@ -129,9 +139,24 @@ export interface UploadedImagesResponse {
   truncated: boolean;
 }
 
+export interface AttachmentMutationResponse {
+  image: UploadedImage;
+}
+
+export interface AttachmentDeleteConflictResponse {
+  error: string;
+  references: ImageReference[];
+}
+
 export interface MarkdownInsertionRequest {
   cellId: string;
   markdown: string;
+  requestId: number;
+}
+
+export interface ExcalidrawImageInsertionRequest {
+  cellId: string;
+  image: UploadedImage;
   requestId: number;
 }
 

@@ -7,6 +7,7 @@ import {
   smallSecondaryButtonClass,
 } from "@/components/ui/buttonStyles";
 import type {
+  ExcalidrawImageInsertionRequest,
   MarkdownInsertionRequest,
   NotebookCell,
   TextSelectionRequest,
@@ -20,6 +21,7 @@ interface CellFrameProps {
   findQuery: string;
   textSelection: TextSelectionRequest | null;
   markdownInsertion: MarkdownInsertionRequest | null;
+  excalidrawImageInsertion: ExcalidrawImageInsertionRequest | null;
   isTouchDrawingEnabled: boolean;
   showLegacyDrawingControls: boolean;
   onUpdateTextCell: (cellId: string, content: string) => void;
@@ -44,6 +46,7 @@ export default function CellFrame({
   findQuery,
   textSelection,
   markdownInsertion,
+  excalidrawImageInsertion,
   isTouchDrawingEnabled,
   showLegacyDrawingControls,
   onUpdateTextCell,
@@ -211,6 +214,7 @@ export default function CellFrame({
       ) : (
         <ExcalidrawCellEditor
           cell={cell}
+          imageInsertion={excalidrawImageInsertion}
           onChange={(drawing) => onUpdateDrawingCell(cell.id, drawing)}
         />
       )}

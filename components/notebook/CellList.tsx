@@ -2,6 +2,7 @@ import { DragDropProvider } from "@dnd-kit/react";
 import { isSortable } from "@dnd-kit/react/sortable";
 import CellFrame from "@/components/notebook/CellFrame";
 import type {
+  ExcalidrawImageInsertionRequest,
   MarkdownInsertionRequest,
   NotebookCell,
   TextSelectionRequest,
@@ -14,6 +15,7 @@ interface CellListProps {
   findQuery: string;
   textSelection: TextSelectionRequest | null;
   markdownInsertion: MarkdownInsertionRequest | null;
+  excalidrawImageInsertion: ExcalidrawImageInsertionRequest | null;
   isTouchDrawingEnabled: boolean;
   showLegacyDrawingControls: boolean;
   onUpdateTextCell: (cellId: string, content: string) => void;
@@ -38,6 +40,7 @@ export default function CellList({
   findQuery,
   textSelection,
   markdownInsertion,
+  excalidrawImageInsertion,
   isTouchDrawingEnabled,
   showLegacyDrawingControls,
   onUpdateTextCell,
@@ -87,6 +90,11 @@ export default function CellList({
             }
             markdownInsertion={
               markdownInsertion?.cellId === cell.id ? markdownInsertion : null
+            }
+            excalidrawImageInsertion={
+              excalidrawImageInsertion?.cellId === cell.id
+                ? excalidrawImageInsertion
+                : null
             }
             isTouchDrawingEnabled={isTouchDrawingEnabled}
             showLegacyDrawingControls={showLegacyDrawingControls}
