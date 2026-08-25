@@ -47,15 +47,35 @@ interface StoredExcalidrawScene {
   version: 1;
   source: "excalidraw";
   elements: readonly OrderedExcalidrawElement[];
-  appState: Pick<AppState, "viewBackgroundColor">;
+  appState: Pick<
+    AppState,
+    | "gridModeEnabled"
+    | "gridSize"
+    | "gridStep"
+    | "scrollX"
+    | "scrollY"
+    | "viewBackgroundColor"
+    | "zoom"
+  >;
+  files: BinaryFiles;
+}
+
+interface PendingSceneSnapshot {
+  elements: readonly OrderedExcalidrawElement[];
+  appState: AppState;
   files: BinaryFiles;
 }
 
 interface ExcalidrawCellEditorProps {
   cell: ExcalidrawCell;
   imageInsertion: ExcalidrawImageInsertionRequest | null;
+  flushRef: { current: (() => void) | null };
   onChange: (drawing: string) => void;
 }
+
+const CONTENT_SAVE_DELAY_MS = 200;
+const VIEW_SAVE_DELAY_MS = 650;
+const MAX_SAVE_WAIT_MS = 2000;
 
 const EXCALIDRAW_UI_OPTIONS = {
   tools: { image: true },
@@ -106,6 +126,39 @@ function loadImageDimensions(
   });
 }
 
+function createContentRevisionKey(
+  elements: readonly OrderedExcalidrawElement[],
+  files: BinaryFiles,
+): string {
+  const elementKey = elements
+    .map(
+      (element) =>
+        `${element.id}:${element.version}:${element.versionNonce}:${element.isDeleted ? 1 : 0}`,
+    )
+    .join("|");
+  const fileKey = Object.values(files)
+    .map(
+      (file) =>
+        `${file.id}:${file.version ?? 0}:${file.dataURL.length}:${file.dataURL.slice(-24)}`,
+    )
+    .sort()
+    .join("|");
+
+  return `${elementKey}#${fileKey}`;
+}
+
+function createViewRevisionKey(appState: AppState): string {
+  return [
+    appState.scrollX.toFixed(2),
+    appState.scrollY.toFixed(2),
+    appState.zoom.value.toFixed(4),
+    appState.gridModeEnabled ? "1" : "0",
+    appState.gridSize ?? "none",
+    appState.gridStep,
+    appState.viewBackgroundColor,
+  ].join(":");
+}
+
 function parseScene(drawing: string | null): ExcalidrawInitialDataState | null {
   if (!drawing) return null;
 
@@ -133,6 +186,7 @@ function parseScene(drawing: string | null): ExcalidrawInitialDataState | null {
 export default function ExcalidrawCellEditor({
   cell,
   imageInsertion,
+  flushRef,
   onChange,
 }: ExcalidrawCellEditorProps) {
   const { userId } = useAuth();
@@ -153,6 +207,17 @@ export default function ExcalidrawCellEditor({
   const hostedFilePromisesRef = useRef(
     new Map<string, Promise<BinaryFileData>>(),
   );
+  const latestSceneSnapshotRef = useRef<PendingSceneSnapshot | null>(null);
+  const lastContentRevisionKeyRef = useRef<string | null>(null);
+  const lastViewRevisionKeyRef = useRef<string | null>(null);
+  const contentSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const viewSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const maximumSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const flushLatestSceneRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -167,16 +232,11 @@ export default function ExcalidrawCellEditor({
   }, [cell.drawing]);
 
   useEffect(() => {
-    return () => {
-      isMountedRef.current = false;
-    };
-  }, []);
-
-  useEffect(() => {
     if (!isFullscreen) return;
 
     function closeOnEscape(event: KeyboardEvent) {
       if (event.key === "Escape") {
+        flushLatestSceneRef.current?.();
         setIsFullscreen(false);
       }
     }
@@ -353,12 +413,25 @@ export default function ExcalidrawCellEditor({
     [cell.id],
   );
 
-  const persistScene = useCallback(
-    (
-      elements: readonly OrderedExcalidrawElement[],
-      appState: AppState,
-      files: BinaryFiles,
-    ) => {
+  const clearSaveTimers = useCallback(() => {
+    if (contentSaveTimerRef.current) {
+      clearTimeout(contentSaveTimerRef.current);
+      contentSaveTimerRef.current = null;
+    }
+
+    if (viewSaveTimerRef.current) {
+      clearTimeout(viewSaveTimerRef.current);
+      viewSaveTimerRef.current = null;
+    }
+
+    if (maximumSaveTimerRef.current) {
+      clearTimeout(maximumSaveTimerRef.current);
+      maximumSaveTimerRef.current = null;
+    }
+  }, []);
+
+  const commitScene = useCallback(
+    ({ elements, appState, files }: PendingSceneSnapshot) => {
       const revision = sceneRevisionRef.current + 1;
       sceneRevisionRef.current = revision;
 
@@ -368,7 +441,13 @@ export default function ExcalidrawCellEditor({
           source: "excalidraw",
           elements,
           appState: {
+            gridModeEnabled: appState.gridModeEnabled,
+            gridSize: appState.gridSize,
+            gridStep: appState.gridStep,
+            scrollX: appState.scrollX,
+            scrollY: appState.scrollY,
             viewBackgroundColor: appState.viewBackgroundColor,
+            zoom: appState.zoom,
           },
           files: hostedFiles,
         };
@@ -421,6 +500,94 @@ export default function ExcalidrawCellEditor({
     [getHostedFile],
   );
 
+  const flushPendingScene = useCallback(() => {
+    const snapshot = latestSceneSnapshotRef.current;
+
+    if (!snapshot) return;
+
+    latestSceneSnapshotRef.current = null;
+    clearSaveTimers();
+    commitScene(snapshot);
+  }, [clearSaveTimers, commitScene]);
+
+  const persistScene = useCallback(
+    (
+      elements: readonly OrderedExcalidrawElement[],
+      appState: AppState,
+      files: BinaryFiles,
+    ) => {
+      latestSceneSnapshotRef.current = { elements, appState, files };
+
+      const contentRevisionKey = createContentRevisionKey(elements, files);
+      const viewRevisionKey = createViewRevisionKey(appState);
+      const contentChanged =
+        lastContentRevisionKeyRef.current !== contentRevisionKey;
+      const viewChanged = lastViewRevisionKeyRef.current !== viewRevisionKey;
+
+      lastContentRevisionKeyRef.current = contentRevisionKey;
+      lastViewRevisionKeyRef.current = viewRevisionKey;
+
+      if (!contentChanged && !viewChanged) return;
+
+      if (contentChanged) {
+        if (contentSaveTimerRef.current) {
+          clearTimeout(contentSaveTimerRef.current);
+        }
+
+        contentSaveTimerRef.current = setTimeout(
+          flushPendingScene,
+          CONTENT_SAVE_DELAY_MS,
+        );
+      } else if (viewChanged) {
+        if (viewSaveTimerRef.current) {
+          clearTimeout(viewSaveTimerRef.current);
+        }
+
+        viewSaveTimerRef.current = setTimeout(
+          flushPendingScene,
+          VIEW_SAVE_DELAY_MS,
+        );
+      }
+
+      if (!maximumSaveTimerRef.current) {
+        maximumSaveTimerRef.current = setTimeout(
+          flushPendingScene,
+          MAX_SAVE_WAIT_MS,
+        );
+      }
+    },
+    [flushPendingScene],
+  );
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    flushRef.current = flushPendingScene;
+    flushLatestSceneRef.current = flushPendingScene;
+
+    function flushWhenPageIsHidden() {
+      if (document.visibilityState === "hidden") {
+        flushPendingScene();
+      }
+    }
+
+    window.addEventListener("pagehide", flushPendingScene);
+    document.addEventListener("visibilitychange", flushWhenPageIsHidden);
+
+    return () => {
+      flushPendingScene();
+      clearSaveTimers();
+      if (flushRef.current === flushPendingScene) {
+        flushRef.current = null;
+      }
+      if (flushLatestSceneRef.current === flushPendingScene) {
+        flushLatestSceneRef.current = null;
+      }
+      isMountedRef.current = false;
+      window.removeEventListener("pagehide", flushPendingScene);
+      document.removeEventListener("visibilitychange", flushWhenPageIsHidden);
+    };
+  }, [clearSaveTimers, flushPendingScene, flushRef]);
+
   return (
     <div
       data-cell-editor="excalidraw"
@@ -449,7 +616,10 @@ export default function ExcalidrawCellEditor({
         </div>
         <button
           type="button"
-          onClick={() => setIsFullscreen((currentValue) => !currentValue)}
+          onClick={() => {
+            flushPendingScene();
+            setIsFullscreen((currentValue) => !currentValue);
+          }}
           className={secondaryButtonClass}
         >
           {isFullscreen ? "Close fullscreen" : "Open fullscreen"}

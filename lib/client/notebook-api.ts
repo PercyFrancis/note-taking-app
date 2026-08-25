@@ -147,6 +147,7 @@ export async function deleteRemoteCell(cellId: string): Promise<void> {
 export async function updateRemoteCell(
   cellId: string,
   input: UpdateCellInput,
+  options: { keepalive?: boolean } = {},
 ): Promise<NotebookCell> {
   const response = await fetch(`/api/cells/${cellId}`, {
     method: "PATCH",
@@ -154,6 +155,7 @@ export async function updateRemoteCell(
       "Content-Type": "application/json",
     },
     body: JSON.stringify(input),
+    keepalive: options.keepalive,
   });
 
   if (!response.ok) {

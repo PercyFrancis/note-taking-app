@@ -1,4 +1,5 @@
 import { useSortable } from "@dnd-kit/react/sortable";
+import { useRef } from "react";
 import DrawingCellEditor from "@/components/notebook/DrawingCellEditor";
 import ExcalidrawCellEditor from "@/components/notebook/ExcalidrawCellEditor";
 import TextCellEditor from "@/components/notebook/TextCellEditor";
@@ -62,6 +63,7 @@ export default function CellFrame({
   onSelectCell,
   onFocusedCellHandled,
 }: CellFrameProps) {
+  const excalidrawFlushRef = useRef<(() => void) | null>(null);
   const { ref, handleRef, isDragging } = useSortable({
     id: cell.id,
     index,
@@ -177,7 +179,10 @@ export default function CellFrame({
             </button>
             <button
               type="button"
-              onClick={() => onCopyCell(cell.id)}
+              onClick={() => {
+                excalidrawFlushRef.current?.();
+                onCopyCell(cell.id);
+              }}
               className={smallSecondaryButtonClass}
               title="Duplicate cell (Ctrl/Cmd + Shift + Enter)"
             >
@@ -185,7 +190,10 @@ export default function CellFrame({
             </button>
             <button
               type="button"
-              onClick={() => onRemoveCell(cell.id)}
+              onClick={() => {
+                excalidrawFlushRef.current?.();
+                onRemoveCell(cell.id);
+              }}
               className={smallDangerButtonClass}
               title="Delete cell (Ctrl/Cmd + Backspace)"
             >
@@ -215,6 +223,7 @@ export default function CellFrame({
         <ExcalidrawCellEditor
           cell={cell}
           imageInsertion={excalidrawImageInsertion}
+          flushRef={excalidrawFlushRef}
           onChange={(drawing) => onUpdateDrawingCell(cell.id, drawing)}
         />
       )}

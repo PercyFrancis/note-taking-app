@@ -577,6 +577,8 @@ The original `drawing` type remains a separate bitmap **Legacy canvas cell** for
 
 The first release includes Excalidraw's pen, selection, eraser, text, image, shape, arrow, color, stroke, zoom, pan, history, export, and fullscreen capabilities. Pasted, dropped, and selected JPEG, PNG, WebP, and GIF files retain the shared 10 MB limit. They upload to private Vercel Blob storage and the scene persists only authenticated URLs instead of base64 payloads; the uploads remain recoverable through the image library. Real-time collaboration remains deferred. Physical Apple Pencil testing of both drawing engines is still pending.
 
+Per-cell Excalidraw state now restores pan, zoom, grid mode and dimensions, and background color without restoring transient selections or dialogs. A two-tier save scheduler uses a 200 ms content settle delay, a 650 ms view-only settle delay, and a two-second maximum wait. The drawing-cell network queue adds 200 ms, and lifecycle flushes protect pending changes during navigation, fullscreen changes, page hiding, copying, and deletion.
+
 ### Why This Is Large
 
 Making drawing cells similar to OneNote means adding features like:

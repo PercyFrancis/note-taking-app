@@ -217,7 +217,11 @@ export default function NotebookApp() {
     new Map<string, ReturnType<typeof setTimeout>>(),
   );
 
-  function queueCellSave(cellId: string, input: UpdateCellInput) {
+  function queueCellSave(
+    cellId: string,
+    input: UpdateCellInput,
+    delayMs = 600,
+  ) {
     const existingInput = pendingCellUpdatesRef.current.get(cellId) ?? {};
     const nextInput = {
       ...existingInput,
@@ -253,13 +257,30 @@ export default function NotebookApp() {
           cellSaveTimersRef.current.delete(cellId);
         }
       }
-    }, 600);
+    }, delayMs);
 
     cellSaveTimersRef.current.set(cellId, nextTimer);
   }
 
   useEffect(() => {
+    function flushCellSavesBeforePageExit() {
+      queueMicrotask(() => {
+        for (const [cellId, input] of pendingCellUpdatesRef.current) {
+          const timer = cellSaveTimersRef.current.get(cellId);
+
+          if (timer) clearTimeout(timer);
+
+          cellSaveTimersRef.current.delete(cellId);
+          pendingCellUpdatesRef.current.delete(cellId);
+          void updateRemoteCell(cellId, input, { keepalive: true });
+        }
+      });
+    }
+
+    window.addEventListener("pagehide", flushCellSavesBeforePageExit);
+
     return () => {
+      window.removeEventListener("pagehide", flushCellSavesBeforePageExit);
       for (const timer of cellSaveTimersRef.current.values()) {
         clearTimeout(timer);
       }
@@ -361,7 +382,7 @@ export default function NotebookApp() {
       ),
     });
 
-    queueCellSave(cellId, { drawing });
+    queueCellSave(cellId, { drawing }, 200);
   }
 
   function updateCellHeight(cellId: string, heightPx: number) {
@@ -506,6 +527,8 @@ export default function NotebookApp() {
       updateNotebook({
         cells: nextCells,
       });
+
+      setTimeout(() => clearQueuedCellSave(cellId), 0);
 
       recordStructuralHistory(activeNotebook.id, {
         kind: "cell-presence",
