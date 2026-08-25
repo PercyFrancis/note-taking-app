@@ -1,0 +1,43 @@
+diff --git a/dist/dev/index.js b/dist/dev/index.js
+index b3155bf06ccdc90dd677be6b21293a78dcd46493..0bbe754ddfc5e3d02aea018f2202198ce1c072f8 100644
+--- a/dist/dev/index.js	
++++ b/dist/dev/index.js
+@@ -3986,13 +3986,6 @@ var FontPickerList = React12.memo(
+       } else if (selectedFontFamily) {
+         font = filteredFonts.find((font2) => font2.value === selectedFontFamily);
+       }
+-      if (!font && searchTerm) {
+-        if (filteredFonts[0]?.value) {
+-          onHover(filteredFonts[0].value);
+-        } else {
+-          onLeave();
+-        }
+-      }
+       return font;
+     }, [
+       hoveredFontFamily,
+@@ -4002,6 +3995,24 @@ var FontPickerList = React12.memo(
+       onHover,
+       onLeave
+     ]);
++    useEffect13(() => {
++      if (hoveredFont || !searchTerm) {
++        return;
++      }
++      const firstFilteredFont = filteredFonts[0]?.value;
++      if (firstFilteredFont && firstFilteredFont !== hoveredFontFamily) {
++        onHover(firstFilteredFont);
++      } else if (!firstFilteredFont && hoveredFontFamily) {
++        onLeave();
++      }
++    }, [
++      hoveredFont,
++      hoveredFontFamily,
++      searchTerm,
++      filteredFonts,
++      onHover,
++      onLeave
++    ]);
+     const onKeyDown = useCallback2(
+       (event) => {
+         const handled = fontPickerKeyHandler({

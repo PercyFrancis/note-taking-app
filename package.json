@@ -16,6 +16,7 @@
   "dependencies": {
     "@clerk/nextjs": "^7.5.7",
     "@dnd-kit/react": "^0.4.0",
+    "@excalidraw/excalidraw": "^0.18.1",
     "@neondatabase/serverless": "^1.1.0",
     "@next/env": "^16.2.9",
     "@vercel/blob": "^2.8.0",

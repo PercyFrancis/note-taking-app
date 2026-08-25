@@ -1,5 +1,6 @@
 import type {
   DrawingCell,
+  ExcalidrawCell,
   Notebook,
   NotebookCell,
   NotebookUpdate,
@@ -27,9 +28,9 @@ export function applyTextCellUpdate(cell: TextCell, content: string): TextCell {
 }
 
 export function applyDrawingCellUpdate(
-  cell: DrawingCell,
+  cell: DrawingCell | ExcalidrawCell,
   drawing: string | null,
-): DrawingCell {
+): DrawingCell | ExcalidrawCell {
   return {
     ...cell,
     drawing,
@@ -70,7 +71,7 @@ export function createDefaultNotebook(): Notebook {
   return {
     id: createId(),
     title: "New note",
-    cells: [createTextCell(), createDrawingCell()],
+    cells: [createTextCell(), createExcalidrawCell()],
     createdAt: now,
     updatedAt: now,
   };
@@ -95,6 +96,19 @@ export function createDrawingCell(): DrawingCell {
     type: "drawing",
     drawing: null,
     heightPx: 360,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+export function createExcalidrawCell(): ExcalidrawCell {
+  const now = Date.now();
+
+  return {
+    id: createId(),
+    type: "excalidraw",
+    drawing: null,
+    heightPx: 420,
     createdAt: now,
     updatedAt: now,
   };

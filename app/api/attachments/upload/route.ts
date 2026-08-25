@@ -5,7 +5,7 @@ import {
   MAX_IMAGE_SIZE_BYTES,
 } from "@/lib/attachments";
 import { getCurrentUserId } from "@/lib/server/current-user";
-import { userOwnsTextCell } from "@/lib/server/notebook-repository";
+import { userOwnsImageAttachmentCell } from "@/lib/server/notebook-repository";
 import { isUuid } from "@/lib/utils";
 
 interface ImageUploadPayload {
@@ -54,10 +54,10 @@ export async function POST(request: Request) {
 
         const { cellId } = parseImageUploadPayload(clientPayload);
         const appUserId = await getCurrentUserId();
-        const ownsCell = await userOwnsTextCell(appUserId, cellId);
+        const ownsCell = await userOwnsImageAttachmentCell(appUserId, cellId);
 
         if (!ownsCell) {
-          throw new Error("Text cell not found");
+          throw new Error("Image attachment cell not found");
         }
 
         const expectedPrefix = `users/${clerkUserId}/images/${cellId}/`;

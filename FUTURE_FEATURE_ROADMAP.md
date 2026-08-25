@@ -569,6 +569,14 @@ Bitmap canvas is good for simple freehand drawing. It is not ideal for selectabl
 
 ## 6. Remake Drawing Cells With A Real Drawing Engine
 
+### Implemented Scope
+
+New drawing actions now create a distinct `excalidraw` cell type backed by the Excalidraw React editor. Scenes use a versioned JSON envelope in the existing `drawing` text column, so persistence, duplication, structural undo/redo, and notebook JSON import/export work without rewriting legacy data.
+
+The original `drawing` type remains a separate bitmap **Legacy canvas cell** for compatibility. Existing cells are never automatically converted. New toolbar buttons, per-cell buttons, and `Alt + Enter` create Excalidraw cells; enabling **Legacy canvas tools** reveals separate legacy creation buttons. The temporary browser-local toggle should eventually move into a general settings menu when enough preferences exist to justify one.
+
+The first release includes Excalidraw's pen, selection, eraser, text, image, shape, arrow, color, stroke, zoom, pan, history, export, and fullscreen capabilities. Pasted, dropped, and selected JPEG, PNG, WebP, and GIF files retain the shared 10 MB limit. They upload to private Vercel Blob storage and the scene persists only authenticated URLs instead of base64 payloads; the uploads remain recoverable through the image library. Real-time collaboration remains deferred. Physical Apple Pencil testing of both drawing engines is still pending.
+
 ### Why This Is Large
 
 Making drawing cells similar to OneNote means adding features like:
@@ -601,7 +609,7 @@ Excalidraw
 custom SVG/canvas hybrid
 ```
 
-tldraw is likely the best fit if you want a richer editor with shapes, assets, selection, tools, history, and editor APIs.
+Excalidraw was selected because it provides the required drawing features under the MIT license. The current tldraw SDK requires a production license key, so it is no longer the default recommendation for this project.
 
 Useful resources:
 

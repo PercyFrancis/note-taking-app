@@ -1,5 +1,6 @@
 import { useSortable } from "@dnd-kit/react/sortable";
 import DrawingCellEditor from "@/components/notebook/DrawingCellEditor";
+import ExcalidrawCellEditor from "@/components/notebook/ExcalidrawCellEditor";
 import TextCellEditor from "@/components/notebook/TextCellEditor";
 import {
   smallDangerButtonClass,
@@ -20,11 +21,13 @@ interface CellFrameProps {
   textSelection: TextSelectionRequest | null;
   markdownInsertion: MarkdownInsertionRequest | null;
   isTouchDrawingEnabled: boolean;
+  showLegacyDrawingControls: boolean;
   onUpdateTextCell: (cellId: string, content: string) => void;
   onUpdateDrawingCell: (cellId: string, drawing: string | null) => void;
   onUpdateCellHeight: (cellId: string, heightPx: number) => void;
   onAddTextCellAfter: (cellId: string) => void;
   onAddDrawingCellAfter: (cellId: string) => void;
+  onAddLegacyDrawingCellAfter: (cellId: string) => void;
   onRemoveCell: (cellId: string) => void | Promise<void>;
   onCopyCell: (cellId: string) => void | Promise<void>;
   onMoveCellUp: (cellId: string) => void;
@@ -42,11 +45,13 @@ export default function CellFrame({
   textSelection,
   markdownInsertion,
   isTouchDrawingEnabled,
+  showLegacyDrawingControls,
   onUpdateTextCell,
   onUpdateDrawingCell,
   onUpdateCellHeight,
   onAddTextCellAfter,
   onAddDrawingCellAfter,
+  onAddLegacyDrawingCellAfter,
   onRemoveCell,
   onCopyCell,
   onMoveCellUp,
@@ -72,7 +77,7 @@ export default function CellFrame({
         }
 
         const interactiveTarget = event.target.closest(
-          "button, input, textarea, select, a, label, [contenteditable='true']",
+          "button, input, textarea, select, a, label, [contenteditable='true'], [data-cell-editor]",
         );
 
         if (!interactiveTarget) {
@@ -96,7 +101,11 @@ export default function CellFrame({
           >
             Drag
           </button>
-          {cell.type === "text" ? "Text cell" : "Drawing cell"}
+          {cell.type === "text"
+            ? "Text cell"
+            : cell.type === "drawing"
+              ? "Legacy canvas cell"
+              : "Excalidraw cell"}
           {isSelected && (
             <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] text-sky-700">
               Selected
@@ -137,6 +146,16 @@ export default function CellFrame({
             >
               + Drawing
             </button>
+            {showLegacyDrawingControls && (
+              <button
+                type="button"
+                onClick={() => onAddLegacyDrawingCellAfter(cell.id)}
+                className={smallSecondaryButtonClass}
+                title="Add a legacy bitmap canvas after this cell"
+              >
+                + Legacy canvas
+              </button>
+            )}
             <button
               type="button"
               onClick={() => onMoveCellUp(cell.id)}
@@ -183,10 +202,15 @@ export default function CellFrame({
           markdownInsertion={markdownInsertion}
           onFocusHandled={onFocusedCellHandled}
         />
-      ) : (
+      ) : cell.type === "drawing" ? (
         <DrawingCellEditor
           cell={cell}
           isTouchDrawingEnabled={isTouchDrawingEnabled}
+          onChange={(drawing) => onUpdateDrawingCell(cell.id, drawing)}
+        />
+      ) : (
+        <ExcalidrawCellEditor
+          cell={cell}
           onChange={(drawing) => onUpdateDrawingCell(cell.id, drawing)}
         />
       )}

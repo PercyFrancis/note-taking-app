@@ -3,8 +3,10 @@ import type {
   CreateCellInput,
   CreateNotebookInput,
   DrawingCell,
+  ExcalidrawCell,
   ImportedCell,
   ImportedDrawingCell,
+  ImportedExcalidrawCell,
   ImportedNotebook,
   ImportedTextCell,
   ImportNotebooksInput,
@@ -51,8 +53,20 @@ function isDrawingCell(value: unknown): value is DrawingCell {
     typeof value.updatedAt === "number"
   );
 }
+function isExcalidrawCell(value: unknown): value is ExcalidrawCell {
+  if (!isRecord(value)) return false;
+
+  return (
+    value.type === "excalidraw" &&
+    typeof value.id === "string" &&
+    (typeof value.drawing === "string" || value.drawing === null) &&
+    typeof value.heightPx === "number" &&
+    typeof value.createdAt === "number" &&
+    typeof value.updatedAt === "number"
+  );
+}
 export function isNotebookCell(value: unknown): value is NotebookCell {
-  return isTextCell(value) || isDrawingCell(value);
+  return isTextCell(value) || isDrawingCell(value) || isExcalidrawCell(value);
 }
 export function isNotebook(value: unknown): value is Notebook {
   if (!isRecord(value)) return false;
@@ -133,7 +147,10 @@ export function isCreateCellInput(value: unknown): value is CreateCellInput {
     return false;
   }
 
-  const hasValidType = value.type === "text" || value.type === "drawing";
+  const hasValidType =
+    value.type === "text" ||
+    value.type === "drawing" ||
+    value.type === "excalidraw";
 
   const hasValidAfterCellId =
     value.afterCellId === undefined ||
@@ -296,8 +313,26 @@ export function isImportedDrawingCell(
   );
 }
 
+export function isImportedExcalidrawCell(
+  value: unknown,
+): value is ImportedExcalidrawCell {
+  if (!isRecord(value)) return false;
+  return (
+    value.type === "excalidraw" &&
+    (typeof value.drawing === "string" || value.drawing === null) &&
+    typeof value.heightPx === "number" &&
+    Number.isFinite(value.heightPx) &&
+    value.heightPx >= 120 &&
+    value.heightPx <= 720
+  );
+}
+
 export function isImportedCell(value: unknown): value is ImportedCell {
-  return isImportedTextCell(value) || isImportedDrawingCell(value);
+  return (
+    isImportedTextCell(value) ||
+    isImportedDrawingCell(value) ||
+    isImportedExcalidrawCell(value)
+  );
 }
 
 function isImportedNotebook(value: unknown): value is ImportedNotebook {

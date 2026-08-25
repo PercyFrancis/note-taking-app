@@ -16,6 +16,7 @@ import type {
 import {
   createDefaultNotebook,
   createDrawingCell,
+  createExcalidrawCell,
   createId,
   createTextCell,
 } from "../utils";
@@ -37,9 +38,17 @@ function mapCellRowToNotebookCell(row: CellRow): NotebookCell {
     };
   }
 
+  if (row.type === "drawing") {
+    return {
+      ...baseCell,
+      type: "drawing",
+      drawing: row.drawing,
+    };
+  }
+
   return {
     ...baseCell,
-    type: "drawing",
+    type: "excalidraw",
     drawing: row.drawing,
   };
 }
@@ -145,7 +154,7 @@ export async function createNotebook(
           ${cell.type},
           ${position},
           ${cell.type === "text" ? cell.content : null},
-          ${cell.type === "drawing" ? cell.drawing : null},
+          ${cell.type !== "text" ? cell.drawing : null},
           ${cell.heightPx},
           to_timestamp(${cell.createdAt} / 1000.0),
           to_timestamp(${cell.updatedAt} / 1000.0)
@@ -209,11 +218,16 @@ export async function createCell(
   notebookId: string,
   input: CreateCellInput,
 ): Promise<NotebookCell | null> {
-  const cell = input.type === "text" ? createTextCell() : createDrawingCell();
+  const cell =
+    input.type === "text"
+      ? createTextCell()
+      : input.type === "drawing"
+        ? createDrawingCell()
+        : createExcalidrawCell();
 
   const afterCellId = input.afterCellId ?? null;
   const content = cell.type === "text" ? cell.content : null;
-  const drawing = cell.type === "drawing" ? cell.drawing : null;
+  const drawing = cell.type !== "text" ? cell.drawing : null;
 
   const rows = (await sql.query(
     `
@@ -330,7 +344,7 @@ export async function restoreCell(
 ): Promise<NotebookCell | null> {
   const { cell, position } = input;
   const content = cell.type === "text" ? cell.content : null;
-  const drawing = cell.type === "drawing" ? cell.drawing : null;
+  const drawing = cell.type !== "text" ? cell.drawing : null;
 
   const rows = (await sql.query(
     `
@@ -499,7 +513,7 @@ export async function updateCell(
     return { status: "invalid_cell_type" };
   }
 
-  if (hasDrawing && cellType !== "drawing") {
+  if (hasDrawing && cellType !== "drawing" && cellType !== "excalidraw") {
     return { status: "invalid_cell_type" };
   }
 
@@ -576,7 +590,7 @@ export async function updateCell(
   };
 }
 
-export async function userOwnsTextCell(
+export async function userOwnsImageAttachmentCell(
   userId: string,
   cellId: string,
 ): Promise<boolean> {
@@ -586,7 +600,7 @@ export async function userOwnsTextCell(
       from cells
       join notebooks on cells.notebook_id = notebooks.id
       where cells.id = $1
-        and cells.type = 'text'
+        and cells.type in ('text', 'excalidraw')
         and notebooks.user_id = $2
     `,
     [cellId, userId],
@@ -813,7 +827,7 @@ export async function importNotebooks(
 
       return {
         id: createId(),
-        type: "drawing",
+        type: cell.type,
         drawing: cell.drawing,
         heightPx: cell.heightPx,
       };
@@ -884,7 +898,7 @@ export async function importNotebooks(
           ${cell.type},
           ${cellIndex},
           ${cell.type === "text" ? cell.content : null},
-          ${cell.type === "drawing" ? cell.drawing : null},
+          ${cell.type !== "text" ? cell.drawing : null},
           ${cell.heightPx},
           now(),
           now()

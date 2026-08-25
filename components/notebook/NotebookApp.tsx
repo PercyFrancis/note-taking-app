@@ -167,7 +167,7 @@ export default function NotebookApp() {
 
     try {
       const newCell = await createRemoteCell(activeNotebook.id, {
-        type: "drawing",
+        type: "excalidraw",
       });
 
       updateNotebook({
@@ -183,6 +183,32 @@ export default function NotebookApp() {
       });
     } catch {
       window.alert("Could not create drawing cell.");
+    }
+  }
+
+  async function addLegacyDrawingCell() {
+    if (!activeNotebook) {
+      return;
+    }
+
+    try {
+      const newCell = await createRemoteCell(activeNotebook.id, {
+        type: "drawing",
+      });
+
+      updateNotebook({
+        cells: [...activeNotebook.cells, newCell],
+      });
+
+      recordStructuralHistory(activeNotebook.id, {
+        kind: "cell-presence",
+        label: "Add legacy canvas cell",
+        cell: newCell,
+        position: activeNotebook.cells.length,
+        presentBefore: false,
+      });
+    } catch {
+      window.alert("Could not create legacy canvas cell.");
     }
   }
 
@@ -316,9 +342,20 @@ export default function NotebookApp() {
     if (!activeNotebook) {
       return;
     }
+
+    const currentCell = activeNotebook.cells.find((cell) => cell.id === cellId);
+
+    if (
+      !currentCell ||
+      currentCell.type === "text" ||
+      currentCell.drawing === drawing
+    ) {
+      return;
+    }
+
     updateNotebook({
       cells: activeNotebook.cells.map((cell) =>
-        cell.id === cellId && cell.type === "drawing"
+        cell.id === cellId && cell.type !== "text"
           ? applyDrawingCellUpdate(cell, drawing)
           : cell,
       ),
@@ -377,7 +414,7 @@ export default function NotebookApp() {
 
     try {
       const newCell = await createRemoteCell(activeNotebook.id, {
-        type: "drawing",
+        type: "excalidraw",
         afterCellId: cellId,
       });
 
@@ -395,6 +432,34 @@ export default function NotebookApp() {
       });
     } catch {
       window.alert("Could not create drawing cell.");
+    }
+  }
+
+  async function addLegacyDrawingCellAfter(cellId: string) {
+    if (!activeNotebook) {
+      return;
+    }
+
+    try {
+      const newCell = await createRemoteCell(activeNotebook.id, {
+        type: "drawing",
+        afterCellId: cellId,
+      });
+
+      updateNotebook({
+        cells: insertCellAfter(activeNotebook.cells, cellId, newCell),
+      });
+
+      recordStructuralHistory(activeNotebook.id, {
+        kind: "cell-presence",
+        label: "Add legacy canvas cell",
+        cell: newCell,
+        position:
+          activeNotebook.cells.findIndex((cell) => cell.id === cellId) + 1,
+        presentBefore: false,
+      });
+    } catch {
+      window.alert("Could not create legacy canvas cell.");
     }
   }
 
@@ -923,9 +988,11 @@ export default function NotebookApp() {
           onUpdateTextCell={updateTextCell}
           onUpdateTextCells={updateTextCells}
           onAddDrawingCell={addDrawingCell}
+          onAddLegacyDrawingCell={addLegacyDrawingCell}
           onUpdateDrawingCell={updateDrawingCell}
           onUpdateCellHeight={updateCellHeight}
           onAddDrawingCellAfter={addDrawingCellAfter}
+          onAddLegacyDrawingCellAfter={addLegacyDrawingCellAfter}
           onAddTextCellAfter={addTextCellAfter}
           onRemoveCell={removeCell}
           onCopyCell={copyCell}

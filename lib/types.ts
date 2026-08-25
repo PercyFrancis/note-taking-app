@@ -1,4 +1,4 @@
-export type CellType = "text" | "drawing";
+export type CellType = "text" | "drawing" | "excalidraw";
 
 export interface BaseCell {
   id: string;
@@ -18,7 +18,12 @@ export interface DrawingCell extends BaseCell {
   drawing: string | null;
 }
 
-export type NotebookCell = TextCell | DrawingCell;
+export interface ExcalidrawCell extends BaseCell {
+  type: "excalidraw";
+  drawing: string | null;
+}
+
+export type NotebookCell = TextCell | DrawingCell | ExcalidrawCell;
 
 export interface TextCellMatch {
   cellId: string;
@@ -73,7 +78,7 @@ export interface NotebookRow {
 export interface CellRow {
   id: string;
   notebook_id: string;
-  type: "text" | "drawing";
+  type: CellType;
   position: number;
   content: string | null;
   drawing: string | null;
@@ -199,7 +204,15 @@ export interface ImportedDrawingCell extends ImportedBaseCell {
   drawing: string | null;
 }
 
-export type ImportedCell = ImportedTextCell | ImportedDrawingCell;
+export interface ImportedExcalidrawCell extends ImportedBaseCell {
+  type: "excalidraw";
+  drawing: string | null;
+}
+
+export type ImportedCell =
+  | ImportedTextCell
+  | ImportedDrawingCell
+  | ImportedExcalidrawCell;
 
 export type PositionRow = {
   position: number;

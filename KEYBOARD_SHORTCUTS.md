@@ -31,6 +31,7 @@ This document lists the shortcuts currently available in the note-taking app and
 | `Ctrl/Cmd + Backspace` | Delete the selected cell | **Selection mode only.** Shows a confirmation and does not replace native deletion while typing. |
 | `Alt + ArrowUp` | Move the selected cell up | **Selection mode only.** Does nothing while typing. |
 | `Alt + ArrowDown` | Move the selected cell down | **Selection mode only.** Does nothing while typing. |
+| `Alt + Enter` | Add an Excalidraw cell after the selected cell | **Selection mode only.** New drawing shortcuts always use the current Excalidraw editor, never the legacy bitmap canvas. |
 
 Buttons associated with these actions show their shortcuts in tooltips.
 
@@ -66,7 +67,6 @@ This app would benefit from the cell-mode pattern used by notebook and block edi
 | `ArrowDown` | Select the next cell | Selection mode only. |
 | `Home` | Select the first cell | Selection mode only. |
 | `End` | Select the last cell | Selection mode only. |
-| `Alt + Enter` | Add a drawing cell after the selected cell | Complements `Ctrl/Cmd + Enter`, which adds a text cell. |
 
 JupyterLab uses `Escape` and `Enter` to move between command mode and edit mode, while Notion uses `Escape`, arrows, and `Enter` for block selection and editing. This app can adopt the same mental model without using Jupyter's single-letter commands, which are easy to trigger accidentally in a web app.
 

@@ -13,6 +13,8 @@ import type {
 } from "@/lib/types";
 
 const TOUCH_DRAWING_STORAGE_KEY = "note-taking-app:draw-with-touch";
+const LEGACY_DRAWING_CONTROLS_STORAGE_KEY =
+  "note-taking-app:show-legacy-drawing-controls";
 
 interface NotebookEditorProps {
   notebook: Notebook;
@@ -21,12 +23,14 @@ interface NotebookEditorProps {
   onUpdateNotebook: (fields: NotebookUpdate) => void;
   onAddTextCell: () => void;
   onAddDrawingCell: () => void;
+  onAddLegacyDrawingCell: () => void;
   onUpdateTextCell: (cellId: string, content: string) => void;
   onUpdateTextCells: (updates: ReadonlyMap<string, string>) => void;
   onUpdateDrawingCell: (cellId: string, drawing: string | null) => void;
   onUpdateCellHeight: (cellId: string, heightPx: number) => void;
   onAddTextCellAfter: (cellId: string) => void;
   onAddDrawingCellAfter: (cellId: string) => void;
+  onAddLegacyDrawingCellAfter: (cellId: string) => void;
   onRemoveCell: (cellId: string) => void | Promise<void>;
   onCopyCell: (cellId: string) => void | Promise<void>;
   onMoveCellUp: (cellId: string) => void;
@@ -49,7 +53,8 @@ function isEditableTarget(target: EventTarget | null): boolean {
   return (
     target.tagName === "TEXTAREA" ||
     target.tagName === "INPUT" ||
-    target.isContentEditable
+    target.isContentEditable ||
+    target.closest("[data-cell-editor='excalidraw']") !== null
   );
 }
 
@@ -66,12 +71,14 @@ export default function NotebookEditor({
   onUpdateNotebook,
   onAddTextCell,
   onAddDrawingCell,
+  onAddLegacyDrawingCell,
   onUpdateTextCell,
   onUpdateTextCells,
   onUpdateDrawingCell,
   onUpdateCellHeight,
   onAddTextCellAfter,
   onAddDrawingCellAfter,
+  onAddLegacyDrawingCellAfter,
   onRemoveCell,
   onCopyCell,
   onMoveCellUp,
@@ -90,6 +97,8 @@ export default function NotebookEditor({
   const [isFindOpen, setIsFindOpen] = useState(false);
   const [isImageLibraryOpen, setIsImageLibraryOpen] = useState(false);
   const [isTouchDrawingEnabled, setIsTouchDrawingEnabled] = useState(false);
+  const [showLegacyDrawingControls, setShowLegacyDrawingControls] =
+    useState(false);
   const [findFocusRequestId, setFindFocusRequestId] = useState(0);
   const [findQuery, setFindQuery] = useState("");
   const [selectedCellId, setSelectedCellId] = useState<string | null>(null);
@@ -104,6 +113,10 @@ export default function NotebookEditor({
     try {
       setIsTouchDrawingEnabled(
         window.localStorage.getItem(TOUCH_DRAWING_STORAGE_KEY) === "true",
+      );
+      setShowLegacyDrawingControls(
+        window.localStorage.getItem(LEGACY_DRAWING_CONTROLS_STORAGE_KEY) ===
+          "true",
       );
     } catch {
       // Drawing still works with the default when browser storage is blocked.
@@ -127,6 +140,23 @@ export default function NotebookEditor({
     });
   }
 
+  function toggleLegacyDrawingControls() {
+    setShowLegacyDrawingControls((currentValue) => {
+      const nextValue = !currentValue;
+
+      try {
+        window.localStorage.setItem(
+          LEGACY_DRAWING_CONTROLS_STORAGE_KEY,
+          String(nextValue),
+        );
+      } catch {
+        // The in-memory preference remains useful for this session.
+      }
+
+      return nextValue;
+    });
+  }
+
   function openFind() {
     setIsFindOpen(true);
     setFindFocusRequestId((currentRequestId) => currentRequestId + 1);
@@ -140,7 +170,11 @@ export default function NotebookEditor({
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      if (document.querySelector('[role="dialog"][aria-modal="true"]')) {
+      if (
+        document.querySelector(
+          '[role="dialog"][aria-modal="true"], [data-fullscreen-drawing-editor="true"]',
+        )
+      ) {
         return;
       }
 
@@ -188,6 +222,12 @@ export default function NotebookEditor({
       }
 
       if (event.altKey && !isModifierPressed && !isTypingInEditableElement) {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          onAddDrawingCellAfter(selectedCellId);
+          return;
+        }
+
         if (event.key === "ArrowUp") {
           event.preventDefault();
           onMoveCellUp(selectedCellId);
@@ -234,6 +274,7 @@ export default function NotebookEditor({
     canUndo,
     selectedCellId,
     onAddTextCellAfter,
+    onAddDrawingCellAfter,
     onCopyCell,
     onMoveCellDown,
     onMoveCellUp,
@@ -283,6 +324,9 @@ export default function NotebookEditor({
             onRedo={onRedo}
             onAddTextCell={onAddTextCell}
             onAddDrawingCell={onAddDrawingCell}
+            onAddLegacyDrawingCell={onAddLegacyDrawingCell}
+            showLegacyDrawingControls={showLegacyDrawingControls}
+            onToggleLegacyDrawingControls={toggleLegacyDrawingControls}
             isTouchDrawingEnabled={isTouchDrawingEnabled}
             onToggleTouchDrawing={toggleTouchDrawing}
             onOpenFind={openFind}
@@ -316,11 +360,13 @@ export default function NotebookEditor({
         textSelection={textSelection}
         markdownInsertion={markdownInsertion}
         isTouchDrawingEnabled={isTouchDrawingEnabled}
+        showLegacyDrawingControls={showLegacyDrawingControls}
         onUpdateTextCell={onUpdateTextCell}
         onUpdateDrawingCell={onUpdateDrawingCell}
         onUpdateCellHeight={onUpdateCellHeight}
         onAddTextCellAfter={onAddTextCellAfter}
         onAddDrawingCellAfter={onAddDrawingCellAfter}
+        onAddLegacyDrawingCellAfter={onAddLegacyDrawingCellAfter}
         onRemoveCell={onRemoveCell}
         onCopyCell={onCopyCell}
         onMoveCellUp={onMoveCellUp}

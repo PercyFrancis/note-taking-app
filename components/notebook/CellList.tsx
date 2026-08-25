@@ -15,11 +15,13 @@ interface CellListProps {
   textSelection: TextSelectionRequest | null;
   markdownInsertion: MarkdownInsertionRequest | null;
   isTouchDrawingEnabled: boolean;
+  showLegacyDrawingControls: boolean;
   onUpdateTextCell: (cellId: string, content: string) => void;
   onUpdateDrawingCell: (cellId: string, drawing: string | null) => void;
   onUpdateCellHeight: (cellId: string, heightPx: number) => void;
   onAddTextCellAfter: (cellId: string) => void;
   onAddDrawingCellAfter: (cellId: string) => void;
+  onAddLegacyDrawingCellAfter: (cellId: string) => void;
   onRemoveCell: (cellId: string) => void | Promise<void>;
   onCopyCell: (cellId: string) => void | Promise<void>;
   onMoveCellUp: (cellId: string) => void;
@@ -37,11 +39,13 @@ export default function CellList({
   textSelection,
   markdownInsertion,
   isTouchDrawingEnabled,
+  showLegacyDrawingControls,
   onUpdateTextCell,
   onUpdateDrawingCell,
   onUpdateCellHeight,
   onAddTextCellAfter,
   onAddDrawingCellAfter,
+  onAddLegacyDrawingCellAfter,
   onRemoveCell,
   onCopyCell,
   onMoveCellUp,
@@ -85,11 +89,13 @@ export default function CellList({
               markdownInsertion?.cellId === cell.id ? markdownInsertion : null
             }
             isTouchDrawingEnabled={isTouchDrawingEnabled}
+            showLegacyDrawingControls={showLegacyDrawingControls}
             onUpdateTextCell={onUpdateTextCell}
             onUpdateDrawingCell={onUpdateDrawingCell}
             onUpdateCellHeight={onUpdateCellHeight}
             onAddTextCellAfter={onAddTextCellAfter}
             onAddDrawingCellAfter={onAddDrawingCellAfter}
+            onAddLegacyDrawingCellAfter={onAddLegacyDrawingCellAfter}
             onRemoveCell={onRemoveCell}
             onCopyCell={onCopyCell}
             onMoveCellUp={onMoveCellUp}

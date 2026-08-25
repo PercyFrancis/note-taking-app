@@ -15,6 +15,9 @@ interface NotebookToolbarProps {
   onRedo: () => void;
   onAddTextCell: () => void;
   onAddDrawingCell: () => void;
+  onAddLegacyDrawingCell: () => void;
+  showLegacyDrawingControls: boolean;
+  onToggleLegacyDrawingControls: () => void;
   isTouchDrawingEnabled: boolean;
   onToggleTouchDrawing: () => void;
   onOpenFind: () => void;
@@ -32,6 +35,9 @@ export default function NotebookToolbar({
   onRedo,
   onAddTextCell,
   onAddDrawingCell,
+  onAddLegacyDrawingCell,
+  showLegacyDrawingControls,
+  onToggleLegacyDrawingControls,
   isTouchDrawingEnabled,
   onToggleTouchDrawing,
   onOpenFind,
@@ -83,6 +89,27 @@ export default function NotebookToolbar({
         className={primaryButtonClass}
       >
         Add drawing cell
+      </button>
+
+      {showLegacyDrawingControls && (
+        <button
+          type="button"
+          onClick={onAddLegacyDrawingCell}
+          className={secondaryButtonClass}
+          title="Add a compatibility bitmap canvas cell"
+        >
+          Add legacy canvas
+        </button>
+      )}
+
+      <button
+        type="button"
+        onClick={onToggleLegacyDrawingControls}
+        aria-pressed={showLegacyDrawingControls}
+        className={secondaryButtonClass}
+        title="Show or hide controls for adding legacy bitmap canvas cells"
+      >
+        Legacy canvas tools: {showLegacyDrawingControls ? "Shown" : "Hidden"}
       </button>
 
       <button
