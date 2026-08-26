@@ -29,12 +29,18 @@ import {
   updateRemoteCell,
   updateRemoteNotebook,
 } from "@/lib/client/notebook-api";
+import { importPortableWorkspace } from "@/lib/client/portable-import-api";
 import { createNotebookImportInput } from "@/lib/notebook-import";
 import {
   createNotebookExport,
   parseNotebookExport,
 } from "@/lib/notebook-storage";
 import { isScopedWorkspaceExport } from "@/lib/notebook-validation";
+import {
+  createPortableArchive,
+  createPortableExportFilename,
+  parsePortableArchive,
+} from "@/lib/portable-workspace-transfer";
 import {
   createExportFilename,
   createScopedFolderExport,
@@ -73,6 +79,15 @@ function downloadJson(data: unknown, filename: string) {
   const blob = new Blob([JSON.stringify(data, null, 2)], {
     type: "application/json",
   });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -985,6 +1000,61 @@ export default function NotebookApp() {
     }
   }
 
+  async function exportPortableNotebook(notebookId: string) {
+    if (
+      !window.confirm(
+        "Portable exports contain unencrypted copies of private images. Anyone with the ZIP can view them. Continue?",
+      )
+    ) {
+      return;
+    }
+    try {
+      const snapshot = await createFlushedExportSnapshot();
+      const notebook = snapshot.find((item) => item.id === notebookId);
+      if (!notebook) throw new Error("Notebook not found");
+      const archive = await createPortableArchive(
+        createScopedNotebookExport(notebook),
+      );
+      downloadBlob(
+        archive,
+        createPortableExportFilename(notebook.title, "notebook"),
+      );
+    } catch (error) {
+      window.alert(
+        error instanceof Error
+          ? `Could not export this portable notebook. ${error.message}`
+          : "Could not export this portable notebook.",
+      );
+    }
+  }
+
+  async function exportPortableFolder(folderId: string) {
+    if (
+      !window.confirm(
+        "Portable exports contain unencrypted copies of private images. Anyone with the ZIP can view them. Continue?",
+      )
+    ) {
+      return;
+    }
+    try {
+      const snapshot = await createFlushedExportSnapshot();
+      const folder = folders.find((item) => item.id === folderId);
+      const workspace = createScopedFolderExport(folderId, folders, snapshot);
+      if (!folder || !workspace) throw new Error("Folder not found");
+      const archive = await createPortableArchive(workspace);
+      downloadBlob(
+        archive,
+        createPortableExportFilename(folder.name, "folder"),
+      );
+    } catch (error) {
+      window.alert(
+        error instanceof Error
+          ? `Could not export this portable folder. ${error.message}`
+          : "Could not export this portable folder.",
+      );
+    }
+  }
+
   async function importScopedWorkspace(
     destinationFolderId: string | null,
     file: File,
@@ -1014,6 +1084,33 @@ export default function NotebookApp() {
       );
     } catch {
       window.alert("Could not import this notebook or folder.");
+    }
+  }
+
+  async function importPortableArchive(
+    destinationFolderId: string | null,
+    file: File,
+  ) {
+    try {
+      const archive = await parsePortableArchive(file);
+      const importedRootFolderId = await importPortableWorkspace(
+        archive,
+        destinationFolderId,
+      );
+      await reloadOrganization();
+      setSelectedLocation(
+        importedRootFolderId
+          ? { kind: "folder", folderId: importedRootFolderId }
+          : destinationFolderId
+            ? { kind: "folder", folderId: destinationFolderId }
+            : { kind: "unfiled" },
+      );
+    } catch (error) {
+      window.alert(
+        error instanceof Error
+          ? `Could not import this portable archive. ${error.message}`
+          : "Could not import this portable archive.",
+      );
     }
   }
 
@@ -1336,8 +1433,17 @@ export default function NotebookApp() {
         onMoveFolder={moveFolder}
         onExportNotebook={(notebookId) => void exportNotebook(notebookId)}
         onExportFolder={(folderId) => void exportFolder(folderId)}
+        onExportPortableNotebook={(notebookId) =>
+          void exportPortableNotebook(notebookId)
+        }
+        onExportPortableFolder={(folderId) =>
+          void exportPortableFolder(folderId)
+        }
         onImportIntoFolder={(folderId, file) =>
           void importScopedWorkspace(folderId, file)
+        }
+        onImportPortableIntoFolder={(folderId, file) =>
+          void importPortableArchive(folderId, file)
         }
         onRestoreTrashItem={restoreTrashItem}
         onPermanentlyDeleteTrashItem={permanentlyDeleteTrashItem}

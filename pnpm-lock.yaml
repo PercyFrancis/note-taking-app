@@ -29,6 +29,9 @@ importers:
       '@vercel/blob':
         specifier: ^2.8.0
         version: 2.8.0
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
       katex:
         specifier: ^0.17.0
         version: 0.17.0
@@ -1390,6 +1393,9 @@ packages:
 
   fastdom@1.0.12:
     resolution: {integrity: sha512-LB+xjSTEbjHE1cWsxu+tN2Xqr1kpi+V9aADI7sVM5ZMaXyYGPHULQMzpJMYqOTULK/73pUkWVzzObFRBkPr+hg==}
+
+  fflate@0.8.3:
+    resolution: {integrity: sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==}
 
   fill-range@7.1.1:
     resolution: {integrity: sha512-YsGpe3WHLK8ZYi4tWDg2Jy3ebRz2rXowDxnld4bkQB00cc/1Zw9AWnC0i9ztDJitivtQvaI9KaLyKrc+hBW0yg==}
@@ -3598,6 +3604,8 @@ snapshots:
   fastdom@1.0.12:
     dependencies:
       strictdom: 1.0.1
+
+  fflate@0.8.3: {}
 
   fill-range@7.1.1:
     dependencies:

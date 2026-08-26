@@ -316,6 +316,47 @@ export interface ScopedWorkspaceImportResponse {
   rootFolderId: string | null;
 }
 
+export interface PortableArchiveAttachment {
+  id: string;
+  archivePath: string;
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
+  sha256: string;
+}
+
+export interface PortableArchiveManifest {
+  format: "note-taking-app-portable";
+  version: 1;
+  exportedAt: number;
+  workspacePath: "workspace.json";
+  attachments: PortableArchiveAttachment[];
+}
+
+export interface PortableImportSession {
+  sessionId: string;
+  token: string;
+  expiresAt: number;
+  uploadPrefix: string;
+}
+
+export interface PortableImportAttachment {
+  id: string;
+  pathname: string;
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
+  sha256: string;
+}
+
+export interface PortableWorkspaceImportInput {
+  destinationFolderId: string | null;
+  sessionId: string;
+  token: string;
+  workspace: ScopedWorkspaceExport;
+  attachments: PortableImportAttachment[];
+}
+
 export type PositionRow = {
   position: number;
 };

@@ -39,7 +39,10 @@ interface NotebookSidebarProps {
   onMoveFolder: (folderId: string, parentId: string | null) => void;
   onExportNotebook: (notebookId: string) => void;
   onExportFolder: (folderId: string) => void;
+  onExportPortableNotebook: (notebookId: string) => void;
+  onExportPortableFolder: (folderId: string) => void;
   onImportIntoFolder: (folderId: string | null, file: File) => void;
+  onImportPortableIntoFolder: (folderId: string | null, file: File) => void;
   onRestoreTrashItem: (item: TrashItem) => void;
   onPermanentlyDeleteTrashItem: (item: TrashItem) => void;
 }
@@ -335,7 +338,10 @@ export default function NotebookSidebar({
   onMoveFolder,
   onExportNotebook,
   onExportFolder,
+  onExportPortableNotebook,
+  onExportPortableFolder,
   onImportIntoFolder,
+  onImportPortableIntoFolder,
   onRestoreTrashItem,
   onPermanentlyDeleteTrashItem,
 }: NotebookSidebarProps) {
@@ -347,6 +353,7 @@ export default function NotebookSidebar({
   const hoveredFolderIdRef = useRef<string | null>(null);
   const expandTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scopedImportInputRef = useRef<HTMLInputElement>(null);
+  const portableImportInputRef = useRef<HTMLInputElement>(null);
   const importDestinationFolderIdRef = useRef<string | null>(null);
 
   const foldersByParent = useMemo(() => {
@@ -494,6 +501,14 @@ export default function NotebookSidebar({
     }
   }
 
+  function choosePortableImport(destinationFolderId: string | null) {
+    importDestinationFolderIdRef.current = destinationFolderId;
+    if (portableImportInputRef.current) {
+      portableImportInputRef.current.value = "";
+      portableImportInputRef.current.click();
+    }
+  }
+
   return (
     <DragDropProvider
       onDragOver={(event) => {
@@ -533,6 +548,22 @@ export default function NotebookSidebar({
             const file = event.target.files?.[0];
             if (file) {
               onImportIntoFolder(importDestinationFolderIdRef.current, file);
+            }
+          }}
+        />
+        <input
+          ref={portableImportInputRef}
+          type="file"
+          accept="application/zip,.zip"
+          className="hidden"
+          aria-label="Import portable notebook or folder archive"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) {
+              onImportPortableIntoFolder(
+                importDestinationFolderIdRef.current,
+                file,
+              );
             }
           }}
         />
@@ -723,6 +754,17 @@ export default function NotebookSidebar({
           >
             Import here…
           </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="w-full rounded px-3 py-2 text-left hover:bg-slate-100"
+            onClick={() => {
+              choosePortableImport(null);
+              setMenuItem(null);
+            }}
+          >
+            Import portable ZIP…
+          </button>
         </div>
       )}
 
@@ -829,6 +871,18 @@ export default function NotebookSidebar({
             role="menuitem"
             className="w-full rounded px-3 py-2 text-left hover:bg-slate-100"
             onClick={() => {
+              if (menuNotebook) onExportPortableNotebook(menuNotebook.id);
+              if (menuFolder) onExportPortableFolder(menuFolder.id);
+              setMenuItem(null);
+            }}
+          >
+            Export portable ZIP
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="w-full rounded px-3 py-2 text-left hover:bg-slate-100"
+            onClick={() => {
               chooseScopedImport(
                 menuFolder ? menuFolder.id : (menuNotebook?.folderId ?? null),
               );
@@ -836,6 +890,19 @@ export default function NotebookSidebar({
             }}
           >
             {menuFolder ? "Import into folder…" : "Import beside notebook…"}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="w-full rounded px-3 py-2 text-left hover:bg-slate-100"
+            onClick={() => {
+              choosePortableImport(
+                menuFolder ? menuFolder.id : (menuNotebook?.folderId ?? null),
+              );
+              setMenuItem(null);
+            }}
+          >
+            Import portable ZIP…
           </button>
           <div className="my-1 border-t border-slate-200" />
           <button

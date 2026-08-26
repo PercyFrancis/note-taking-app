@@ -336,11 +336,9 @@ Checkpoint 6:
 Test export/import behavior with image markdown.
 ```
 
-### Main Caution
+### Portable Attachment Export (Implemented)
 
-If imported markdown contains image URLs, import/export does not automatically copy the image files.
-
-That is acceptable for a first version, but later you may want a real attachment export format.
+Lightweight JSON import/export intentionally preserves image URLs without copying files. The separate portable ZIP format includes the selected notebook or folder hierarchy plus deduplicated private Markdown and Excalidraw images. Import verifies the archive and image hashes, stages each image in the importing user's private Blob storage, rewrites the references, and commits the notes and attachment records transactionally. External URLs remain unchanged. Limits are 10 MB per image and 100 MB uncompressed per archive; the UI warns that ZIP files contain unencrypted image copies.
 
 ## 4. Scoped Undo And Redo (Implemented)
 

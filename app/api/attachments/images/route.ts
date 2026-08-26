@@ -5,6 +5,7 @@ import {
   deleteAttachmentRecord,
   getAttachments,
   getExpiredUnreferencedAttachments,
+  getRegisteredAttachmentPathnames,
   synchronizeAttachmentIndex,
 } from "@/lib/server/attachment-repository";
 import { getCurrentUserId } from "@/lib/server/current-user";
@@ -35,6 +36,7 @@ export async function GET(request: Request) {
   }
 
   const indexEntries: AttachmentIndexEntry[] = [];
+  const expiredImportPathnames: string[] = [];
   let cursor: string | undefined;
   let hasMore = true;
   let requestCount = 0;
@@ -58,6 +60,14 @@ export async function GET(request: Request) {
         const cellId = relativePathname.slice(0, separatorIndex);
         const filename = relativePathname.slice(separatorIndex + 1);
 
+        if (
+          /^import-[0-9a-f-]{36}\/[0-9a-f-]{36}\/.+/i.test(relativePathname) &&
+          blob.uploadedAt.getTime() < Date.now() - 60 * 60 * 1000
+        ) {
+          expiredImportPathnames.push(blob.pathname);
+          continue;
+        }
+
         if (!isUuid(cellId) || filename === "" || filename.includes("/")) {
           continue;
         }
@@ -78,6 +88,16 @@ export async function GET(request: Request) {
 
     const appUserId = await getCurrentUserId();
     await synchronizeAttachmentIndex(appUserId, indexEntries);
+    const registeredImportPathnames = await getRegisteredAttachmentPathnames(
+      appUserId,
+      expiredImportPathnames,
+    );
+    const abandonedImportPathnames = expiredImportPathnames.filter(
+      (pathname) => !registeredImportPathnames.has(pathname),
+    );
+    if (abandonedImportPathnames.length > 0) {
+      await del(abandonedImportPathnames);
+    }
     const expiredImages = await getExpiredUnreferencedAttachments(appUserId);
 
     await Promise.all(

@@ -145,6 +145,22 @@ export async function getAttachments(
   return rows.map(mapAttachmentRow);
 }
 
+export async function getRegisteredAttachmentPathnames(
+  userId: string,
+  pathnames: string[],
+): Promise<Set<string>> {
+  if (pathnames.length === 0) return new Set();
+  const rows = (await sql.query(
+    `
+      select pathname
+      from image_attachments
+      where user_id = $1 and pathname = any($2::text[])
+    `,
+    [userId, pathnames],
+  )) as Array<{ pathname: string }>;
+  return new Set(rows.map((row) => row.pathname));
+}
+
 export async function getAttachment(
   userId: string,
   attachmentId: string,

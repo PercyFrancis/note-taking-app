@@ -6,6 +6,12 @@ interface ChangedRow {
   id: string;
 }
 
+export interface ImportedAttachmentRecord {
+  pathname: string;
+  filename: string;
+  sizeBytes: number;
+}
+
 function orderFoldersParentFirst(
   folders: ScopedExportFolder[],
 ): ScopedExportFolder[] {
@@ -32,6 +38,7 @@ function orderFoldersParentFirst(
 export async function importScopedWorkspace(
   userId: string,
   input: ScopedWorkspaceImportInput,
+  attachments: ImportedAttachmentRecord[] = [],
 ): Promise<string | null> {
   if (input.destinationFolderId) {
     const destinationRows = (await sql.query(
@@ -60,6 +67,16 @@ export async function importScopedWorkspace(
         : (importedFolderIds.get(notebook.folderId) ?? null),
     cells: notebook.cells.map((cell) => ({ ...cell, id: createId() })),
   }));
+
+  const preparedAttachments = attachments.map((attachment) => {
+    const sourceCell = preparedNotebooks
+      .flatMap((notebook) => notebook.cells)
+      .find((cell) => {
+        const value = cell.type === "text" ? cell.content : cell.drawing;
+        return value?.includes(attachment.pathname);
+      });
+    return { ...attachment, sourceCellId: sourceCell?.id ?? null };
+  });
 
   await sql.transaction((txn) => [
     ...orderedFolders.map((folder) => {
@@ -132,6 +149,33 @@ export async function importScopedWorkspace(
           )
         `,
       ),
+    ),
+    ...preparedAttachments.map(
+      (attachment) => txn`
+        insert into image_attachments (
+          user_id,
+          source_cell_id,
+          pathname,
+          display_name,
+          original_filename,
+          size_bytes,
+          uploaded_at,
+          created_at,
+          updated_at
+        )
+        values (
+          ${userId},
+          ${attachment.sourceCellId},
+          ${attachment.pathname},
+          ${attachment.filename},
+          ${attachment.filename},
+          ${attachment.sizeBytes},
+          now(),
+          now(),
+          now()
+        )
+        on conflict (pathname) do nothing
+      `,
     ),
   ]);
 
