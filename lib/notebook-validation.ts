@@ -2,15 +2,19 @@ import type {
   AttachmentMutationResponse,
   CellResponse,
   CreateCellInput,
+  CreateFolderInput,
   CreateNotebookInput,
   DrawingCell,
   ExcalidrawCell,
+  FolderResponse,
+  FoldersResponse,
   ImportedCell,
   ImportedDrawingCell,
   ImportedExcalidrawCell,
   ImportedNotebook,
   ImportedTextCell,
   ImportNotebooksInput,
+  MoveNotebookInput,
   Notebook,
   NotebookCell,
   NotebookExport,
@@ -21,7 +25,10 @@ import type {
   RestoreCellInput,
   StoredNotebooks,
   TextCell,
+  TrashItem,
+  TrashResponse,
   UpdateCellInput,
+  UpdateFolderInput,
   UpdateNotebookInput,
   UploadedImagesResponse,
 } from "./types";
@@ -75,6 +82,9 @@ export function isNotebook(value: unknown): value is Notebook {
   return (
     typeof value.id === "string" &&
     typeof value.title === "string" &&
+    (value.folderId === undefined ||
+      value.folderId === null ||
+      (typeof value.folderId === "string" && isUuid(value.folderId))) &&
     Array.isArray(value.cells) &&
     value.cells.every(isNotebookCell) &&
     typeof value.createdAt === "number" &&
@@ -112,7 +122,92 @@ export function isCreateNotebookInput(
     return false;
   }
 
-  return typeof value.title === "string";
+  return (
+    typeof value.title === "string" &&
+    (value.folderId === undefined ||
+      value.folderId === null ||
+      (typeof value.folderId === "string" && isUuid(value.folderId)))
+  );
+}
+
+export function isCreateFolderInput(
+  value: unknown,
+): value is CreateFolderInput {
+  return (
+    isRecord(value) &&
+    typeof value.name === "string" &&
+    (value.parentId === undefined ||
+      value.parentId === null ||
+      (typeof value.parentId === "string" && isUuid(value.parentId)))
+  );
+}
+
+export function isUpdateFolderInput(
+  value: unknown,
+): value is UpdateFolderInput {
+  if (!isRecord(value)) return false;
+
+  if (value.action === "rename") return typeof value.name === "string";
+  if (value.action === "move") {
+    return (
+      value.parentId === null ||
+      (typeof value.parentId === "string" && isUuid(value.parentId))
+    );
+  }
+
+  return false;
+}
+
+export function isMoveNotebookInput(
+  value: unknown,
+): value is MoveNotebookInput {
+  return (
+    isRecord(value) &&
+    (value.folderId === null ||
+      (typeof value.folderId === "string" && isUuid(value.folderId)))
+  );
+}
+
+function isFolder(value: unknown): value is FolderResponse["folder"] {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    isUuid(value.id) &&
+    typeof value.name === "string" &&
+    (value.parentId === null ||
+      (typeof value.parentId === "string" && isUuid(value.parentId))) &&
+    typeof value.position === "number" &&
+    typeof value.createdAt === "number" &&
+    typeof value.updatedAt === "number"
+  );
+}
+
+export function isFoldersResponse(value: unknown): value is FoldersResponse {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.folders) &&
+    value.folders.every(isFolder)
+  );
+}
+
+export function isFolderResponse(value: unknown): value is FolderResponse {
+  return isRecord(value) && isFolder(value.folder);
+}
+
+export function isTrashResponse(value: unknown): value is TrashResponse {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.items) &&
+    value.items.every(
+      (item): item is TrashItem =>
+        isRecord(item) &&
+        typeof item.id === "string" &&
+        isUuid(item.id) &&
+        (item.kind === "folder" || item.kind === "notebook") &&
+        typeof item.name === "string" &&
+        typeof item.trashedAt === "number",
+    )
+  );
 }
 
 export function isNotebooksResponse(

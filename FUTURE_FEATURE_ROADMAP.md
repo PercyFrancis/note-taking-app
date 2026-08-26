@@ -700,6 +700,14 @@ This feature may reshape the entire drawing-cell architecture.
 
 Do not start it until basic note-taking, search, shortcuts, imports, and image attachments feel stable.
 
+## Filesystem-Style Folder Organization (Implemented)
+
+Notebooks now belong to either the workspace root or one arbitrarily nested folder. The existing sidebar contains an expandable folder tree plus virtual **All notes**, **Unfiled**, and **Trash** locations. Notebook and folder moves use visible drag handles with destination feedback and auto-expansion for collapsed folders. Right-click and **…** action menus share a searchable **Move to…** folder picker for touch and keyboard-friendly operation. The editor displays the active folder path as a breadcrumb.
+
+Folder moves are validated server-side to prevent circular ancestry. Deleting a folder recursively trashes its complete subtree and notebooks without changing their original parent relationships. Trash shows only top-level recoverable items, so restoring a folder restores the hierarchy as a unit. Permanent deletion remains a separate confirmed operation.
+
+Folder-aware JSON import/export is the next scope expansion. The current notebook export continues to preserve notebook contents but does not recreate the folder tree when imported.
+
 ## 7. Optional PDF Editing
 
 ### Why This Should Be Last

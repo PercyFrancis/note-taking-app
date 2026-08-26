@@ -71,6 +71,7 @@ export function createDefaultNotebook(): Notebook {
   return {
     id: createId(),
     title: "New note",
+    folderId: null,
     cells: [createTextCell(), createExcalidrawCell()],
     createdAt: now,
     updatedAt: now,

@@ -21,7 +21,10 @@ export function loadStoredNotebooks(): Notebook[] | null {
       return null;
     }
 
-    return parsedValue.notebooks;
+    return parsedValue.notebooks.map((notebook) => ({
+      ...notebook,
+      folderId: notebook.folderId ?? null,
+    }));
   } catch {
     return null;
   }
@@ -60,7 +63,10 @@ export function parseNotebookExport(fileText: string): Notebook[] | null {
       return null;
     }
 
-    return parsedValue.notebooks;
+    return parsedValue.notebooks.map((notebook) => ({
+      ...notebook,
+      folderId: notebook.folderId ?? null,
+    }));
   } catch {
     return null;
   }

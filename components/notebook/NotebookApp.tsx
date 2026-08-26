@@ -1,8 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import NotebookEditor from "@/components/notebook/NotebookEditor";
 import NotebookSidebar from "@/components/notebook/NotebookSidebar";
+import {
+  createRemoteFolder,
+  deleteRemoteFolder,
+  loadRemoteFolders,
+  loadRemoteTrash,
+  moveRemoteFolder,
+  renameRemoteFolder,
+  restoreRemoteFolder,
+} from "@/lib/client/folder-api";
 import {
   createRemoteCell,
   createRemoteNotebook,
@@ -11,9 +20,11 @@ import {
   duplicateRemoteCell,
   importRemoteNotebooks,
   loadRemoteNotebooks,
+  moveRemoteNotebook,
   reorderRemoteCells,
   reorderRemoteNotebooks,
   restoreRemoteCell,
+  restoreRemoteNotebook,
   updateRemoteCell,
   updateRemoteNotebook,
 } from "@/lib/client/notebook-api";
@@ -22,10 +33,12 @@ import {
   parseNotebookExport,
 } from "@/lib/notebook-storage";
 import type {
+  Folder,
   ImportNotebooksInput,
   Notebook,
   NotebookCell,
   NotebookUpdate,
+  TrashItem,
   UpdateCellInput,
   UpdateNotebookInput,
 } from "@/lib/types";
@@ -68,22 +81,39 @@ type NotebookHistory = {
   redo: StructuralHistoryEntry[];
 };
 
+export type SidebarLocation =
+  | { kind: "all" }
+  | { kind: "unfiled" }
+  | { kind: "folder"; folderId: string }
+  | { kind: "trash" };
+
 export default function NotebookApp() {
-  async function createNotebook() {
+  async function createNotebook(folderIdOverride?: string | null) {
+    const folderId =
+      folderIdOverride !== undefined
+        ? folderIdOverride
+        : selectedLocation.kind === "folder"
+          ? selectedLocation.folderId
+          : null;
+
     try {
       const notebook = await createRemoteNotebook({
         title: "New note",
+        folderId,
       });
 
       setNotebooks((currentNotebooks) => [notebook, ...currentNotebooks]);
       setActiveNotebookId(notebook.id);
+      setSelectedLocation(
+        folderId ? { kind: "folder", folderId } : { kind: "unfiled" },
+      );
     } catch {
       window.alert("Could not create notebook.");
     }
   }
 
   async function deleteNotebook(id: string) {
-    const shouldDelete = window.confirm("Delete this notebook?");
+    const shouldDelete = window.confirm("Move this notebook to Trash?");
 
     if (!shouldDelete) {
       return;
@@ -91,6 +121,7 @@ export default function NotebookApp() {
 
     try {
       await deleteRemoteNotebook(id);
+      setTrashItems(await loadRemoteTrash());
 
       setHistoryByNotebook((currentHistory) => {
         const { [id]: _deletedHistory, ...remainingHistory } = currentHistory;
@@ -114,7 +145,190 @@ export default function NotebookApp() {
         return remaining;
       });
     } catch {
-      window.alert("Could not delete notebook.");
+      window.alert("Could not move the notebook to Trash.");
+    }
+  }
+
+  async function createFolder(parentIdOverride?: string | null) {
+    const name = window.prompt("Folder name");
+    if (!name) return;
+
+    try {
+      const folder = await createRemoteFolder(
+        name,
+        parentIdOverride !== undefined
+          ? parentIdOverride
+          : selectedLocation.kind === "folder"
+            ? selectedLocation.folderId
+            : null,
+      );
+      setFolders((currentFolders) => [...currentFolders, folder]);
+      setSelectedLocation({ kind: "folder", folderId: folder.id });
+    } catch {
+      window.alert("Could not create folder.");
+    }
+  }
+
+  async function renameFolder(folder: Folder) {
+    const name = window.prompt("Rename folder", folder.name);
+    if (!name || name === folder.name) return;
+
+    try {
+      const updatedFolder = await renameRemoteFolder(folder.id, name);
+      setFolders((currentFolders) =>
+        currentFolders.map((currentFolder) =>
+          currentFolder.id === folder.id ? updatedFolder : currentFolder,
+        ),
+      );
+    } catch {
+      window.alert("Could not rename folder.");
+    }
+  }
+
+  async function moveFolder(folderId: string, parentId: string | null) {
+    const currentFolder = folders.find((folder) => folder.id === folderId);
+    if (currentFolder?.parentId === parentId) return;
+
+    try {
+      const updatedFolder = await moveRemoteFolder(folderId, parentId);
+      setFolders((currentFolders) =>
+        currentFolders.map((folder) =>
+          folder.id === folderId ? updatedFolder : folder,
+        ),
+      );
+    } catch {
+      window.alert("That folder cannot be moved there.");
+    }
+  }
+
+  async function moveNotebook(notebookId: string, folderId: string | null) {
+    const currentNotebook = notebooks.find(
+      (notebook) => notebook.id === notebookId,
+    );
+    if (currentNotebook?.folderId === folderId) return;
+
+    try {
+      await moveRemoteNotebook(notebookId, folderId);
+      setNotebooks((currentNotebooks) =>
+        currentNotebooks.map((notebook) =>
+          notebook.id === notebookId ? { ...notebook, folderId } : notebook,
+        ),
+      );
+    } catch {
+      window.alert("Could not move notebook.");
+    }
+  }
+
+  async function moveNotebookBefore(
+    notebookId: string,
+    targetNotebookId: string,
+  ) {
+    if (notebookId === targetNotebookId) return;
+
+    const sourceNotebook = notebooks.find(
+      (notebook) => notebook.id === notebookId,
+    );
+    const targetNotebook = notebooks.find(
+      (notebook) => notebook.id === targetNotebookId,
+    );
+    if (!sourceNotebook || !targetNotebook) return;
+
+    const targetFolderId = targetNotebook.folderId;
+    const orderedSiblings = notebooks.filter(
+      (notebook) =>
+        notebook.id !== notebookId && notebook.folderId === targetFolderId,
+    );
+    const targetIndex = orderedSiblings.findIndex(
+      (notebook) => notebook.id === targetNotebookId,
+    );
+    if (targetIndex < 0) return;
+
+    orderedSiblings.splice(targetIndex, 0, {
+      ...sourceNotebook,
+      folderId: targetFolderId,
+    });
+
+    try {
+      if (sourceNotebook.folderId !== targetFolderId) {
+        await moveRemoteNotebook(notebookId, targetFolderId);
+      }
+      await reorderRemoteNotebooks({
+        notebookIds: orderedSiblings.map((notebook) => notebook.id),
+      });
+
+      const targetIds = new Set(orderedSiblings.map((notebook) => notebook.id));
+      setNotebooks((currentNotebooks) => [
+        ...orderedSiblings,
+        ...currentNotebooks.filter((notebook) => !targetIds.has(notebook.id)),
+      ]);
+    } catch {
+      window.alert("Could not reorder notebook.");
+      await reloadOrganization();
+    }
+  }
+
+  async function renameNotebook(notebook: Notebook) {
+    const title = window.prompt("Rename notebook", notebook.title);
+    if (!title || title === notebook.title) return;
+
+    try {
+      const pendingTitleSave = notebookTitleSaveTimersRef.current.get(
+        notebook.id,
+      );
+      if (pendingTitleSave) {
+        clearTimeout(pendingTitleSave);
+        notebookTitleSaveTimersRef.current.delete(notebook.id);
+      }
+      await updateRemoteNotebook(notebook.id, { title });
+      setNotebooks((currentNotebooks) =>
+        currentNotebooks.map((currentNotebook) =>
+          currentNotebook.id === notebook.id
+            ? { ...currentNotebook, title }
+            : currentNotebook,
+        ),
+      );
+    } catch {
+      window.alert("Could not rename notebook.");
+    }
+  }
+
+  async function deleteFolder(folder: Folder) {
+    if (
+      !window.confirm(
+        `Move “${folder.name}” and everything inside it to Trash?`,
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await deleteRemoteFolder(folder.id);
+      await reloadOrganization();
+      setSelectedLocation({ kind: "all" });
+    } catch {
+      window.alert("Could not move folder to Trash.");
+    }
+  }
+
+  async function restoreTrashItem(item: TrashItem) {
+    try {
+      if (item.kind === "folder") await restoreRemoteFolder(item.id);
+      else await restoreRemoteNotebook(item.id);
+      await reloadOrganization();
+    } catch {
+      window.alert("Could not restore item.");
+    }
+  }
+
+  async function permanentlyDeleteTrashItem(item: TrashItem) {
+    if (!window.confirm(`Permanently delete “${item.name}”?`)) return;
+
+    try {
+      if (item.kind === "folder") await deleteRemoteFolder(item.id, true);
+      else await deleteRemoteNotebook(item.id, true);
+      await reloadOrganization();
+    } catch {
+      window.alert("Could not permanently delete item.");
     }
   }
 
@@ -632,6 +846,11 @@ export default function NotebookApp() {
   }
 
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
+  const [folders, setFolders] = useState<Folder[]>([]);
+  const [trashItems, setTrashItems] = useState<TrashItem[]>([]);
+  const [selectedLocation, setSelectedLocation] = useState<SidebarLocation>({
+    kind: "all",
+  });
   const [activeNotebookId, setActiveNotebookId] = useState("");
   const [isLoadingNotebooks, setIsLoadingNotebooks] = useState(true);
   const [historyByNotebook, setHistoryByNotebook] = useState<
@@ -641,22 +860,36 @@ export default function NotebookApp() {
   const historyBusyRef = useRef(false);
   const pendingCellOrderNotebookIdsRef = useRef(new Set<string>());
 
+  const reloadOrganization = useCallback(async () => {
+    const [remoteNotebooks, remoteFolders, remoteTrash] = await Promise.all([
+      loadRemoteNotebooks(),
+      loadRemoteFolders(),
+      loadRemoteTrash(),
+    ]);
+
+    setNotebooks(remoteNotebooks);
+    setFolders(remoteFolders);
+    setTrashItems(remoteTrash);
+    setActiveNotebookId((currentId) =>
+      remoteNotebooks.some((notebook) => notebook.id === currentId)
+        ? currentId
+        : (remoteNotebooks[0]?.id ?? ""),
+    );
+  }, []);
+
   useEffect(() => {
     async function loadNotebooks() {
       try {
-        const remoteNotebooks = await loadRemoteNotebooks();
-
-        setNotebooks(remoteNotebooks);
-        setActiveNotebookId(remoteNotebooks[0]?.id ?? "");
+        await reloadOrganization();
       } catch {
-        window.alert("Could not load notebooks from the server.");
+        window.alert("Could not load your notebook workspace.");
       } finally {
         setIsLoadingNotebooks(false);
       }
     }
 
     loadNotebooks();
-  }, []);
+  }, [reloadOrganization]);
 
   function exportNotebooks() {
     const exportData = createNotebookExport(notebooks);
@@ -741,36 +974,6 @@ export default function NotebookApp() {
       window.alert("Could not import notebooks.");
     } finally {
       setIsImporting(false);
-    }
-  }
-
-  function haveSameNotebookOrder(
-    currentNotebooks: Notebook[],
-    nextNotebooks: Notebook[],
-  ): boolean {
-    return currentNotebooks.every(
-      (notebook, index) => notebook.id === nextNotebooks[index]?.id,
-    );
-  }
-
-  function reorderNotebooks(fromIndex: number, toIndex: number) {
-    const nextNotebooks = moveItem(notebooks, fromIndex, toIndex);
-
-    if (haveSameNotebookOrder(notebooks, nextNotebooks)) {
-      return;
-    }
-
-    setNotebooks(nextNotebooks);
-    saveNotebookOrder(nextNotebooks);
-  }
-
-  async function saveNotebookOrder(notebooks: Notebook[]) {
-    try {
-      await reorderRemoteNotebooks({
-        notebookIds: notebooks.map((notebook) => notebook.id),
-      });
-    } catch {
-      window.alert("Could not save notebook order.");
     }
   }
 
@@ -976,9 +1179,32 @@ export default function NotebookApp() {
   const nextRedoLabel = activeHistory.redo.at(-1)?.label ?? null;
 
   const [searchQuery, setSearchQuery] = useState("");
-  const filteredNotebooks = notebooks.filter((notebook) =>
-    notebookMatchesSearch(notebook, searchQuery),
-  );
+  const filteredNotebooks = notebooks.filter((notebook) => {
+    if (!notebookMatchesSearch(notebook, searchQuery)) return false;
+    if (searchQuery.trim() !== "") return true;
+    if (selectedLocation.kind === "trash") return false;
+    if (selectedLocation.kind === "unfiled") return notebook.folderId === null;
+    if (selectedLocation.kind === "folder") {
+      return notebook.folderId === selectedLocation.folderId;
+    }
+    return true;
+  });
+  const activeFolderPath = (() => {
+    if (!activeNotebook?.folderId) return [];
+
+    const foldersById = new Map(folders.map((folder) => [folder.id, folder]));
+    const path: string[] = [];
+    let folder = foldersById.get(activeNotebook.folderId);
+    const visited = new Set<string>();
+
+    while (folder && !visited.has(folder.id)) {
+      visited.add(folder.id);
+      path.unshift(folder.name);
+      folder = folder.parentId ? foldersById.get(folder.parentId) : undefined;
+    }
+
+    return path;
+  })();
   const [focusedCellId, setFocusedCellId] = useState<string | null>(null);
 
   if (isLoadingNotebooks) {
@@ -993,18 +1219,32 @@ export default function NotebookApp() {
     <main className="flex min-h-screen flex-col bg-slate-100 text-slate-950 md:flex-row">
       <NotebookSidebar
         notebooks={filteredNotebooks}
+        allNotebooks={notebooks}
+        folders={folders}
+        trashItems={trashItems}
         activeNotebookId={activeNotebookId}
+        selectedLocation={selectedLocation}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
+        onSelectLocation={setSelectedLocation}
         onSelectNotebook={setActiveNotebookId}
         onCreateNotebook={createNotebook}
+        onCreateFolder={createFolder}
+        onRenameNotebook={renameNotebook}
+        onRenameFolder={renameFolder}
+        onDeleteFolder={deleteFolder}
         onDeleteNotebook={deleteNotebook}
-        onReorderNotebooks={reorderNotebooks}
+        onMoveNotebook={moveNotebook}
+        onMoveNotebookBefore={moveNotebookBefore}
+        onMoveFolder={moveFolder}
+        onRestoreTrashItem={restoreTrashItem}
+        onPermanentlyDeleteTrashItem={permanentlyDeleteTrashItem}
       />
-      {activeNotebook ? (
+      {activeNotebook && selectedLocation.kind !== "trash" ? (
         <NotebookEditor
           notebook={activeNotebook}
           notebooks={notebooks}
+          folderPath={activeFolderPath}
           focusedCellId={focusedCellId}
           onUpdateNotebook={updateNotebook}
           onAddTextCell={addTextCell}
@@ -1036,18 +1276,24 @@ export default function NotebookApp() {
         <section className="flex min-w-0 flex-1 items-center justify-center bg-slate-50 px-6 py-12">
           <div className="max-w-sm text-center">
             <h2 className="text-lg font-semibold text-slate-900">
-              No notebook selected
+              {selectedLocation.kind === "trash"
+                ? "Trash"
+                : "No notebook selected"}
             </h2>
             <p className="mt-2 text-sm text-slate-500">
-              Create a notebook to start writing.
+              {selectedLocation.kind === "trash"
+                ? "Restore or permanently delete items from the sidebar."
+                : "Create a notebook to start writing."}
             </p>
-            <button
-              type="button"
-              onClick={createNotebook}
-              className={[primaryButtonClass, "mt-4 px-4"].join(" ")}
-            >
-              New notebook
-            </button>
+            {selectedLocation.kind !== "trash" && (
+              <button
+                type="button"
+                onClick={() => createNotebook()}
+                className={[primaryButtonClass, "mt-4 px-4"].join(" ")}
+              >
+                New notebook
+              </button>
+            )}
           </div>
         </section>
       )}

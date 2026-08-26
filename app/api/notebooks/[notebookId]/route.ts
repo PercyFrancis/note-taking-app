@@ -2,6 +2,7 @@ import { isUpdateNotebookInput } from "@/lib/notebook-validation";
 import { getCurrentUserId } from "@/lib/server/current-user";
 import {
   deleteNotebook,
+  permanentlyDeleteNotebook,
   updateNotebookTitle,
 } from "@/lib/server/notebook-repository";
 import type { NotebookRouteContext } from "@/lib/types";
@@ -29,13 +30,17 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   { params }: NotebookRouteContext,
 ) {
   const { notebookId } = await params;
   const userId = await getCurrentUserId();
 
-  const didDelete = await deleteNotebook(userId, notebookId);
+  const permanent =
+    new URL(request.url).searchParams.get("permanent") === "true";
+  const didDelete = permanent
+    ? await permanentlyDeleteNotebook(userId, notebookId)
+    : await deleteNotebook(userId, notebookId);
 
   if (!didDelete) {
     return Response.json({ error: "Notebook not found" }, { status: 404 });

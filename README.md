@@ -6,6 +6,14 @@
 - This app uses a PostgreSQL database for persistence.
   - Neon is the provider.
 
+## Notebook Folders And Trash
+
+Notebooks use a filesystem-style organization model. Each notebook is stored either at the workspace root (**Unfiled**) or in one nested folder. The sidebar provides **All notes**, **Unfiled**, and **Trash** virtual locations alongside an expandable folder tree. Use a notebook or folder's drag handle to move it, or right-click it (or select its **…** button) and choose **Move to…** to open the searchable folder picker. Dropping a notebook between notebook rows reorders it, hovering over a collapsed folder while dragging expands it, and circular folder moves are rejected. The editor breadcrumb shows the active notebook's folder path.
+
+Deleting a notebook moves it to Trash. Deleting a folder moves its entire folder subtree and every contained notebook to Trash while preserving the hierarchy. Restoring the top-level trashed item restores its original path and contents. Permanent deletion is a separate confirmed action. Folder names reject path separators, control characters, `.` and `..`, matching filesystem-safe naming behavior while notebook titles remain free-form.
+
+Folder-aware JSON import/export is not implemented yet. Notebook content is still exported, but importing that file places the notebooks at the workspace root rather than recreating the folder tree.
+
 ## Private Image Storage
 
 Markdown-cell image uploads use a private Vercel Blob store. To enable them:

@@ -56,9 +56,10 @@ function mapCellRowToNotebookCell(row: CellRow): NotebookCell {
 export async function getNotebooks(userId: string): Promise<Notebook[]> {
   const notebookRows = (await sql.query(
     `
-      select id, title, position, created_at, updated_at
+      select id, title, folder_id, position, trashed_at, created_at, updated_at
       from notebooks
       where user_id = $1
+        and trashed_at is null
       order by position asc
     `,
     [userId],
@@ -102,6 +103,7 @@ export async function getNotebooks(userId: string): Promise<Notebook[]> {
   return notebookRows.map((row) => ({
     id: row.id,
     title: row.title,
+    folderId: row.folder_id,
     cells: cellsByNotebookId.get(row.id) ?? [],
     createdAt: new Date(row.created_at).getTime(),
     updatedAt: new Date(row.updated_at).getTime(),
@@ -115,6 +117,7 @@ export async function createNotebook(
   const notebook = {
     ...createDefaultNotebook(),
     title: input.title,
+    folderId: input.folderId ?? null,
   };
 
   await sql.transaction((txn) => [
@@ -122,17 +125,28 @@ export async function createNotebook(
       update notebooks
       set position = position + 1
       where user_id = ${userId}
+        and folder_id is not distinct from ${notebook.folderId}
+        and trashed_at is null
     `,
     txn`
-      insert into notebooks (id, user_id, title, position, created_at, updated_at)
-      values (
+      insert into notebooks (
+        id, user_id, folder_id, title, position, created_at, updated_at
+      )
+      select
         ${notebook.id},
         ${userId},
+        ${notebook.folderId},
         ${notebook.title},
         ${0},
         to_timestamp(${notebook.createdAt} / 1000.0),
         to_timestamp(${notebook.updatedAt} / 1000.0)
-      )
+      where ${notebook.folderId}::uuid is null
+        or exists (
+          select 1 from folders
+          where id = ${notebook.folderId}
+            and user_id = ${userId}
+            and trashed_at is null
+        )
     `,
     ...notebook.cells.map(
       (cell, position) =>
@@ -192,20 +206,90 @@ export async function deleteNotebook(
 ): Promise<boolean> {
   const rows = (await sql.query(
     ` 
-      with deleted_notebook as (
-        delete from notebooks
-        where id = $1
-          and user_id = $2
-        returning id, user_id, position
-      ),
-      shifted_notebooks as (
-        update notebooks
-        set position = position - 1
-        where user_id = (select user_id from deleted_notebook)
-          and position > (select position from deleted_notebook)
-        returning id
-      )
-      select id from deleted_notebook
+      update notebooks
+      set trashed_at = now(), updated_at = now()
+      where id = $1 and user_id = $2 and trashed_at is null
+      returning id
+    `,
+    [notebookId, userId],
+  )) as ChangedNotebookRow[];
+
+  return rows.length > 0;
+}
+
+export async function moveNotebookToFolder(
+  userId: string,
+  notebookId: string,
+  folderId: string | null,
+): Promise<boolean> {
+  const rows = (await sql.query(
+    `
+      update notebooks
+      set
+        folder_id = $3,
+        position = coalesce((
+          select max(position) + 1
+          from notebooks as siblings
+          where siblings.user_id = $2
+            and siblings.folder_id is not distinct from $3::uuid
+            and siblings.trashed_at is null
+        ), 0),
+        updated_at = now()
+      where notebooks.id = $1
+        and notebooks.user_id = $2
+        and notebooks.trashed_at is null
+        and (
+          $3::uuid is null
+          or exists (
+            select 1 from folders
+            where id = $3 and user_id = $2 and trashed_at is null
+          )
+        )
+      returning notebooks.id
+    `,
+    [notebookId, userId, folderId],
+  )) as ChangedNotebookRow[];
+
+  return rows.length > 0;
+}
+
+export async function restoreNotebook(
+  userId: string,
+  notebookId: string,
+): Promise<boolean> {
+  const rows = (await sql.query(
+    `
+      update notebooks
+      set trashed_at = null, updated_at = now()
+      where notebooks.id = $1
+        and notebooks.user_id = $2
+        and notebooks.trashed_at is not null
+        and (
+          notebooks.folder_id is null
+          or exists (
+            select 1 from folders
+            where folders.id = notebooks.folder_id
+              and folders.user_id = $2
+              and folders.trashed_at is null
+          )
+        )
+      returning notebooks.id
+    `,
+    [notebookId, userId],
+  )) as ChangedNotebookRow[];
+
+  return rows.length > 0;
+}
+
+export async function permanentlyDeleteNotebook(
+  userId: string,
+  notebookId: string,
+): Promise<boolean> {
+  const rows = (await sql.query(
+    `
+      delete from notebooks
+      where id = $1 and user_id = $2 and trashed_at is not null
+      returning id
     `,
     [notebookId, userId],
   )) as ChangedNotebookRow[];
@@ -779,6 +863,16 @@ export async function reorderNotebooks(
         select notebooks.id
         from notebooks
         where notebooks.user_id = (select id from target_user)
+          and notebooks.trashed_at is null
+          and notebooks.folder_id is not distinct from (
+            select notebooks.folder_id
+            from notebooks
+            join requested_order on requested_order.id = notebooks.id
+            where notebooks.user_id = (select id from target_user)
+              and notebooks.trashed_at is null
+            order by requested_order.position
+            limit 1
+          )
       ),
       valid_order as (
         select count(*) as matching_count

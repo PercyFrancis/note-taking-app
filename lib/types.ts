@@ -38,6 +38,7 @@ export interface TextSelectionRequest extends TextCellMatch {
 export interface Notebook {
   id: string;
   title: string;
+  folderId: string | null;
   cells: NotebookCell[];
   createdAt: number;
   updatedAt: number;
@@ -57,6 +58,50 @@ export interface StoredNotebooks {
 
 export interface CreateNotebookInput {
   title: string;
+  folderId?: string | null;
+}
+
+export interface Folder {
+  id: string;
+  name: string;
+  parentId: string | null;
+  position: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface FoldersResponse {
+  folders: Folder[];
+}
+
+export interface FolderResponse {
+  folder: Folder;
+}
+
+export interface CreateFolderInput {
+  name: string;
+  parentId?: string | null;
+}
+
+export interface UpdateFolderInput {
+  action: "rename" | "move";
+  name?: string;
+  parentId?: string | null;
+}
+
+export interface MoveNotebookInput {
+  folderId: string | null;
+}
+
+export interface TrashItem {
+  id: string;
+  kind: "folder" | "notebook";
+  name: string;
+  trashedAt: number;
+}
+
+export interface TrashResponse {
+  items: TrashItem[];
 }
 
 export interface NotebooksResponse {
@@ -71,6 +116,8 @@ export interface NotebookRow {
   id: string;
   title: string;
   position: number;
+  folder_id: string | null;
+  trashed_at: Date | string | null;
   created_at: Date | string;
   updated_at: Date | string;
 }

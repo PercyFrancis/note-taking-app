@@ -74,14 +74,41 @@ export async function updateRemoteNotebook(
   }
 }
 
-export async function deleteRemoteNotebook(notebookId: string): Promise<void> {
-  const response = await fetch(`/api/notebooks/${notebookId}`, {
-    method: "DELETE",
-  });
+export async function deleteRemoteNotebook(
+  notebookId: string,
+  permanent = false,
+): Promise<void> {
+  const response = await fetch(
+    `/api/notebooks/${notebookId}${permanent ? "?permanent=true" : ""}`,
+    {
+      method: "DELETE",
+    },
+  );
 
   if (!response.ok) {
     throw new Error("Failed to delete notebook");
   }
+}
+
+export async function moveRemoteNotebook(
+  notebookId: string,
+  folderId: string | null,
+): Promise<void> {
+  const response = await fetch(`/api/notebooks/${notebookId}/move`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ folderId }),
+  });
+
+  if (!response.ok) throw new Error("Failed to move notebook");
+}
+
+export async function restoreRemoteNotebook(notebookId: string): Promise<void> {
+  const response = await fetch(`/api/notebooks/${notebookId}/restore`, {
+    method: "POST",
+  });
+
+  if (!response.ok) throw new Error("Failed to restore notebook");
 }
 
 export async function createRemoteCell(

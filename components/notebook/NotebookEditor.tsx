@@ -21,6 +21,7 @@ const LEGACY_DRAWING_CONTROLS_STORAGE_KEY =
 interface NotebookEditorProps {
   notebook: Notebook;
   notebooks: Notebook[];
+  folderPath: string[];
   focusedCellId: string | null;
   onUpdateNotebook: (fields: NotebookUpdate) => void;
   onAddTextCell: () => void;
@@ -69,6 +70,7 @@ function getTargetCellId(target: EventTarget | null): string | null {
 export default function NotebookEditor({
   notebook,
   notebooks,
+  folderPath,
   focusedCellId,
   onUpdateNotebook,
   onAddTextCell,
@@ -308,7 +310,9 @@ export default function NotebookEditor({
   return (
     <section className="flex min-w-0 flex-1 flex-col">
       <header className="border-b border-slate-200 bg-white px-4 py-4 md:px-8">
-        <p className="text-xs font-medium uppercase text-slate-400">Notebook</p>
+        <p className="text-xs font-medium text-slate-400">
+          {folderPath.length > 0 ? folderPath.join(" / ") : "Unfiled"}
+        </p>
 
         <div className="mt-2 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <input
