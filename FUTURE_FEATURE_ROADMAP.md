@@ -571,7 +571,7 @@ Bitmap canvas is good for simple freehand drawing. It is not ideal for selectabl
 
 ### Implemented Scope
 
-New drawing actions now create a distinct `excalidraw` cell type backed by the Excalidraw React editor. Scenes use a versioned JSON envelope in the existing `drawing` text column, so persistence, duplication, structural undo/redo, and notebook JSON import/export work without rewriting legacy data.
+New drawing actions now create a distinct `excalidraw` cell type backed by the Excalidraw React editor. Scenes use a versioned JSON envelope in the existing `drawing` text column, so persistence, duplication, structural undo/redo, and notebook JSON import/export work without rewriting legacy data. Import retains the distinct cell engine and validates the scene envelope. Export flushes pending scenes and awaits hosted-image conversion before producing its snapshot.
 
 The original `drawing` type remains a separate bitmap **Legacy canvas cell** for compatibility. Existing cells are never automatically converted. New toolbar buttons, per-cell buttons, and `Alt + Enter` create Excalidraw cells; enabling **Legacy canvas tools** reveals separate legacy creation buttons. The temporary browser-local toggle should eventually move into a general settings menu when enough preferences exist to justify one.
 
@@ -706,7 +706,7 @@ Notebooks now belong to either the workspace root or one arbitrarily nested fold
 
 Folder moves are validated server-side to prevent circular ancestry. Deleting a folder recursively trashes its complete subtree and notebooks without changing their original parent relationships. Trash shows only top-level recoverable items, so restoring a folder restores the hierarchy as a unit. Permanent deletion remains a separate confirmed operation.
 
-Folder-aware JSON import/export is the next scope expansion. The current notebook export continues to preserve notebook contents but does not recreate the folder tree when imported.
+Scoped JSON import/export is implemented through notebook and folder context menus. Notebook exports contain one note, while folder exports preserve the selected folder's complete descendant tree and notebook contents. Scoped imports recreate that hierarchy beneath the chosen folder or **Unfiled**, remapping every database ID. The toolbar's version 1 whole-workspace export remains flat; upgrading that global format to preserve the entire folder tree is still a future scope expansion.
 
 ## 7. Optional PDF Editing
 

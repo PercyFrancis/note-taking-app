@@ -23,6 +23,8 @@ export interface ExcalidrawCell extends BaseCell {
   drawing: string | null;
 }
 
+export type ExcalidrawSceneFlush = () => Promise<string | null>;
+
 export type NotebookCell = TextCell | DrawingCell | ExcalidrawCell;
 
 export interface TextCellMatch {
@@ -285,6 +287,34 @@ export type ImportedCell =
   | ImportedTextCell
   | ImportedDrawingCell
   | ImportedExcalidrawCell;
+
+export interface ScopedExportFolder {
+  id: string;
+  name: string;
+  parentId: string | null;
+}
+
+export interface ScopedExportNotebook extends ImportedNotebook {
+  folderId: string | null;
+}
+
+export interface ScopedWorkspaceExport {
+  version: 2;
+  kind: "notebook" | "folder";
+  exportedAt: number;
+  rootFolderId: string | null;
+  folders: ScopedExportFolder[];
+  notebooks: ScopedExportNotebook[];
+}
+
+export interface ScopedWorkspaceImportInput {
+  destinationFolderId: string | null;
+  workspace: ScopedWorkspaceExport;
+}
+
+export interface ScopedWorkspaceImportResponse {
+  rootFolderId: string | null;
+}
 
 export type PositionRow = {
   position: number;

@@ -2,6 +2,7 @@ import {
   isCellResponse,
   isNotebookResponse,
   isNotebooksResponse,
+  isScopedWorkspaceImportResponse,
 } from "../notebook-validation";
 
 import type {
@@ -13,6 +14,7 @@ import type {
   ReorderCellsInput,
   ReorderNotebooksInput,
   RestoreCellInput,
+  ScopedWorkspaceExport,
   UpdateCellInput,
   UpdateNotebookInput,
 } from "../types";
@@ -273,4 +275,22 @@ export async function importRemoteNotebooks(
   }
 
   return data.notebooks;
+}
+
+export async function importRemoteScopedWorkspace(
+  workspace: ScopedWorkspaceExport,
+  destinationFolderId: string | null,
+): Promise<string | null> {
+  const response = await fetch("/api/notebooks/import/scoped", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ workspace, destinationFolderId }),
+  });
+
+  if (!response.ok) throw new Error("Failed to import item");
+  const data: unknown = await response.json();
+  if (!isScopedWorkspaceImportResponse(data)) {
+    throw new Error("Invalid scoped import response");
+  }
+  return data.rootFolderId;
 }

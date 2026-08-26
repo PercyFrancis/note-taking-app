@@ -3,6 +3,7 @@ import { isSortable } from "@dnd-kit/react/sortable";
 import CellFrame from "@/components/notebook/CellFrame";
 import type {
   ExcalidrawImageInsertionRequest,
+  ExcalidrawSceneFlush,
   MarkdownInsertionRequest,
   NotebookCell,
   TextSelectionRequest,
@@ -29,6 +30,11 @@ interface CellListProps {
   onMoveCellUp: (cellId: string) => void;
   onMoveCellDown: (cellId: string) => void;
   onSelectCell: (cellId: string) => void;
+  onRegisterExcalidrawFlush: (
+    cellId: string,
+    flush: ExcalidrawSceneFlush | null,
+  ) => void;
+  onExcalidrawImageInsertionHandled: (requestId: number) => void;
   onReorderCells: (fromIndex: number, toIndex: number) => void;
   onFocusedCellHandled: () => void;
 }
@@ -54,6 +60,8 @@ export default function CellList({
   onMoveCellUp,
   onMoveCellDown,
   onSelectCell,
+  onRegisterExcalidrawFlush,
+  onExcalidrawImageInsertionHandled,
   onReorderCells,
   onFocusedCellHandled,
 }: CellListProps) {
@@ -109,6 +117,10 @@ export default function CellList({
             onMoveCellUp={onMoveCellUp}
             onMoveCellDown={onMoveCellDown}
             onSelectCell={onSelectCell}
+            onRegisterExcalidrawFlush={onRegisterExcalidrawFlush}
+            onExcalidrawImageInsertionHandled={
+              onExcalidrawImageInsertionHandled
+            }
             onFocusedCellHandled={onFocusedCellHandled}
           />
         ))}

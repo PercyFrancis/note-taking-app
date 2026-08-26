@@ -1,3 +1,6 @@
+import { isValidStoredExcalidrawScene } from "./excalidraw-scene";
+import { normalizeFolderName } from "./folders";
+import { hasValidScopedFolderHierarchy } from "./scoped-workspace-transfer";
 import type {
   AttachmentMutationResponse,
   CellResponse,
@@ -23,6 +26,10 @@ import type {
   ReorderCellsInput,
   ReorderNotebooksInput,
   RestoreCellInput,
+  ScopedExportNotebook,
+  ScopedWorkspaceExport,
+  ScopedWorkspaceImportInput,
+  ScopedWorkspaceImportResponse,
   StoredNotebooks,
   TextCell,
   TrashItem,
@@ -68,6 +75,7 @@ function isExcalidrawCell(value: unknown): value is ExcalidrawCell {
     value.type === "excalidraw" &&
     typeof value.id === "string" &&
     (typeof value.drawing === "string" || value.drawing === null) &&
+    isValidStoredExcalidrawScene(value.drawing) &&
     typeof value.heightPx === "number" &&
     typeof value.createdAt === "number" &&
     typeof value.updatedAt === "number"
@@ -429,6 +437,7 @@ export function isImportedExcalidrawCell(
   return (
     value.type === "excalidraw" &&
     (typeof value.drawing === "string" || value.drawing === null) &&
+    isValidStoredExcalidrawScene(value.drawing) &&
     typeof value.heightPx === "number" &&
     Number.isFinite(value.heightPx) &&
     value.heightPx >= 120 &&
@@ -468,5 +477,97 @@ export function isImportNotebooksInput(
     Array.isArray(value.notebooks) &&
     value.notebooks.every(isImportedNotebook) &&
     value.notebooks.length > 0
+  );
+}
+
+export function isScopedWorkspaceExport(
+  value: unknown,
+): value is ScopedWorkspaceExport {
+  if (
+    !isRecord(value) ||
+    value.version !== 2 ||
+    (value.kind !== "notebook" && value.kind !== "folder") ||
+    typeof value.exportedAt !== "number" ||
+    !Number.isFinite(value.exportedAt) ||
+    !Array.isArray(value.folders) ||
+    !Array.isArray(value.notebooks)
+  ) {
+    return false;
+  }
+
+  const folderIds = new Set<string>();
+  for (const folder of value.folders) {
+    if (
+      !isRecord(folder) ||
+      typeof folder.id !== "string" ||
+      !isUuid(folder.id) ||
+      folderIds.has(folder.id) ||
+      typeof folder.name !== "string" ||
+      normalizeFolderName(folder.name) !== folder.name ||
+      !(
+        folder.parentId === null ||
+        (typeof folder.parentId === "string" && isUuid(folder.parentId))
+      )
+    ) {
+      return false;
+    }
+    folderIds.add(folder.id);
+  }
+
+  for (const notebook of value.notebooks) {
+    const folderId = isRecord(notebook) ? notebook.folderId : undefined;
+    if (
+      !isImportedNotebook(notebook) ||
+      !(
+        folderId === null ||
+        (typeof folderId === "string" && folderIds.has(folderId))
+      )
+    ) {
+      return false;
+    }
+  }
+  const notebooks = value.notebooks as ScopedExportNotebook[];
+
+  if (value.kind === "notebook") {
+    return (
+      value.rootFolderId === null &&
+      value.folders.length === 0 &&
+      notebooks.length === 1 &&
+      notebooks[0].folderId === null
+    );
+  }
+
+  if (
+    typeof value.rootFolderId !== "string" ||
+    !folderIds.has(value.rootFolderId)
+  ) {
+    return false;
+  }
+
+  return (
+    hasValidScopedFolderHierarchy(value.folders, value.rootFolderId) &&
+    notebooks.every((notebook) => notebook.folderId !== null)
+  );
+}
+
+export function isScopedWorkspaceImportInput(
+  value: unknown,
+): value is ScopedWorkspaceImportInput {
+  return (
+    isRecord(value) &&
+    (value.destinationFolderId === null ||
+      (typeof value.destinationFolderId === "string" &&
+        isUuid(value.destinationFolderId))) &&
+    isScopedWorkspaceExport(value.workspace)
+  );
+}
+
+export function isScopedWorkspaceImportResponse(
+  value: unknown,
+): value is ScopedWorkspaceImportResponse {
+  return (
+    isRecord(value) &&
+    (value.rootFolderId === null ||
+      (typeof value.rootFolderId === "string" && isUuid(value.rootFolderId)))
   );
 }

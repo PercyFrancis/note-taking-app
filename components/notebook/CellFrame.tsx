@@ -1,5 +1,5 @@
 import { useSortable } from "@dnd-kit/react/sortable";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import DrawingCellEditor from "@/components/notebook/DrawingCellEditor";
 import ExcalidrawCellEditor from "@/components/notebook/ExcalidrawCellEditor";
 import TextCellEditor from "@/components/notebook/TextCellEditor";
@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/buttonStyles";
 import type {
   ExcalidrawImageInsertionRequest,
+  ExcalidrawSceneFlush,
   MarkdownInsertionRequest,
   NotebookCell,
   TextSelectionRequest,
@@ -36,6 +37,11 @@ interface CellFrameProps {
   onMoveCellUp: (cellId: string) => void;
   onMoveCellDown: (cellId: string) => void;
   onSelectCell: (cellId: string) => void;
+  onRegisterExcalidrawFlush: (
+    cellId: string,
+    flush: ExcalidrawSceneFlush | null,
+  ) => void;
+  onExcalidrawImageInsertionHandled: (requestId: number) => void;
   onFocusedCellHandled: () => void;
 }
 
@@ -61,9 +67,20 @@ export default function CellFrame({
   onMoveCellUp,
   onMoveCellDown,
   onSelectCell,
+  onRegisterExcalidrawFlush,
+  onExcalidrawImageInsertionHandled,
   onFocusedCellHandled,
 }: CellFrameProps) {
-  const excalidrawFlushRef = useRef<(() => void) | null>(null);
+  const excalidrawFlushRef = useRef<ExcalidrawSceneFlush | null>(null);
+  const excalidrawDrawing = cell.type === "excalidraw" ? cell.drawing : null;
+  useEffect(() => {
+    if (cell.type !== "excalidraw") return;
+
+    const flush: ExcalidrawSceneFlush = () =>
+      excalidrawFlushRef.current?.() ?? Promise.resolve(excalidrawDrawing);
+    onRegisterExcalidrawFlush(cell.id, flush);
+    return () => onRegisterExcalidrawFlush(cell.id, null);
+  }, [cell.id, cell.type, excalidrawDrawing, onRegisterExcalidrawFlush]);
   const { ref, handleRef, isDragging } = useSortable({
     id: cell.id,
     index,
@@ -180,8 +197,10 @@ export default function CellFrame({
             <button
               type="button"
               onClick={() => {
-                excalidrawFlushRef.current?.();
-                onCopyCell(cell.id);
+                void (async () => {
+                  await excalidrawFlushRef.current?.();
+                  await onCopyCell(cell.id);
+                })();
               }}
               className={smallSecondaryButtonClass}
               title="Duplicate cell (Ctrl/Cmd + Shift + Enter)"
@@ -191,8 +210,10 @@ export default function CellFrame({
             <button
               type="button"
               onClick={() => {
-                excalidrawFlushRef.current?.();
-                onRemoveCell(cell.id);
+                void (async () => {
+                  await excalidrawFlushRef.current?.();
+                  await onRemoveCell(cell.id);
+                })();
               }}
               className={smallDangerButtonClass}
               title="Delete cell (Ctrl/Cmd + Backspace)"
@@ -225,6 +246,7 @@ export default function CellFrame({
           imageInsertion={excalidrawImageInsertion}
           flushRef={excalidrawFlushRef}
           onChange={(drawing) => onUpdateDrawingCell(cell.id, drawing)}
+          onImageInsertionHandled={onExcalidrawImageInsertionHandled}
         />
       )}
     </article>

@@ -1,11 +1,12 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import CellList from "@/components/notebook/CellList";
 import ImageLibraryDialog from "@/components/notebook/ImageLibraryDialog";
 import NotebookFindReplace from "@/components/notebook/NotebookFindReplace";
 import NotebookToolbar from "@/components/notebook/NotebookToolbar";
 import type {
   ExcalidrawImageInsertionRequest,
+  ExcalidrawSceneFlush,
   MarkdownInsertionRequest,
   Notebook,
   NotebookUpdate,
@@ -47,6 +48,10 @@ interface NotebookEditorProps {
   onRedo: () => void;
   onFocusedCellHandled: () => void;
   onExportNotebooks: () => void;
+  onRegisterExcalidrawFlush: (
+    cellId: string,
+    flush: ExcalidrawSceneFlush | null,
+  ) => void;
   onImportNotebooks: (file: File) => void;
 }
 
@@ -96,6 +101,7 @@ export default function NotebookEditor({
   onRedo,
   onFocusedCellHandled,
   onExportNotebooks,
+  onRegisterExcalidrawFlush,
   onImportNotebooks,
 }: NotebookEditorProps) {
   const [isFindOpen, setIsFindOpen] = useState(false);
@@ -114,7 +120,22 @@ export default function NotebookEditor({
     useState<MarkdownInsertionRequest | null>(null);
   const [excalidrawImageInsertion, setExcalidrawImageInsertion] =
     useState<ExcalidrawImageInsertionRequest | null>(null);
+  const imageInsertionNotebookIdRef = useRef(notebook.id);
+  const handleExcalidrawImageInsertionHandled = useCallback(
+    (requestId: number) => {
+      setExcalidrawImageInsertion((currentRequest) =>
+        currentRequest?.requestId === requestId ? null : currentRequest,
+      );
+    },
+    [],
+  );
 
+  useEffect(() => {
+    if (imageInsertionNotebookIdRef.current !== notebook.id) {
+      imageInsertionNotebookIdRef.current = notebook.id;
+      setExcalidrawImageInsertion(null);
+    }
+  }, [notebook.id]);
   useEffect(() => {
     try {
       setIsTouchDrawingEnabled(
@@ -381,6 +402,10 @@ export default function NotebookEditor({
         onMoveCellUp={onMoveCellUp}
         onMoveCellDown={onMoveCellDown}
         onSelectCell={setSelectedCellId}
+        onRegisterExcalidrawFlush={onRegisterExcalidrawFlush}
+        onExcalidrawImageInsertionHandled={
+          handleExcalidrawImageInsertionHandled
+        }
         onReorderCells={onReorderCells}
         onFocusedCellHandled={onFocusedCellHandled}
       />

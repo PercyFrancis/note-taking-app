@@ -37,6 +37,9 @@ interface NotebookSidebarProps {
   onMoveNotebook: (notebookId: string, folderId: string | null) => void;
   onMoveNotebookBefore: (notebookId: string, targetNotebookId: string) => void;
   onMoveFolder: (folderId: string, parentId: string | null) => void;
+  onExportNotebook: (notebookId: string) => void;
+  onExportFolder: (folderId: string) => void;
+  onImportIntoFolder: (folderId: string | null, file: File) => void;
   onRestoreTrashItem: (item: TrashItem) => void;
   onPermanentlyDeleteTrashItem: (item: TrashItem) => void;
 }
@@ -46,7 +49,7 @@ type DropData =
   | { kind: "folder"; folderId: string | null }
   | { kind: "notebook"; notebookId: string; folderId: string | null };
 type MenuItem = {
-  kind: "notebook" | "folder";
+  kind: "notebook" | "folder" | "root";
   id: string;
   x: number;
   y: number;
@@ -247,7 +250,7 @@ function NotebookRow({
         <button
           ref={handleRef}
           type="button"
-          className="h-7 w-6 shrink-0 cursor-grab rounded text-slate-400 opacity-100 active:cursor-grabbing md:opacity-0 md:group-hover:opacity-100 md:focus:opacity-100"
+          className="relative z-10 h-7 w-6 shrink-0 cursor-grab rounded text-slate-400 opacity-100 active:cursor-grabbing md:opacity-0 md:group-hover:opacity-100 md:focus:opacity-100"
           aria-label={`Drag ${notebook.title}`}
           title="Drag notebook"
         >
@@ -255,19 +258,21 @@ function NotebookRow({
         </button>
         <button
           type="button"
-          className="min-w-0 flex-1 text-left"
+          className="min-w-0 flex-1 text-left before:absolute before:inset-0"
           onClick={onSelect}
         >
-          <span className="block truncate text-sm font-medium">
+          <span className="pointer-events-none block truncate text-sm font-medium">
             📄 {notebook.title}
           </span>
           {preview && (
-            <span className="block truncate text-xs opacity-70">{preview}</span>
+            <span className="pointer-events-none block truncate text-xs opacity-70">
+              {preview}
+            </span>
           )}
         </button>
         <button
           type="button"
-          className="h-7 w-7 shrink-0 rounded opacity-100 hover:bg-slate-200/20 md:opacity-0 md:group-hover:opacity-100 md:focus:opacity-100"
+          className="relative z-10 h-7 w-7 shrink-0 rounded opacity-100 hover:bg-slate-200/20 md:opacity-0 md:group-hover:opacity-100 md:focus:opacity-100"
           onClick={(event) => onOpenMenu(event, "notebook", notebook.id)}
           aria-label={`Actions for ${notebook.title}`}
         >
@@ -328,6 +333,9 @@ export default function NotebookSidebar({
   onMoveNotebook,
   onMoveNotebookBefore,
   onMoveFolder,
+  onExportNotebook,
+  onExportFolder,
+  onImportIntoFolder,
   onRestoreTrashItem,
   onPermanentlyDeleteTrashItem,
 }: NotebookSidebarProps) {
@@ -338,6 +346,8 @@ export default function NotebookSidebar({
   const [moveRequest, setMoveRequest] = useState<MoveRequest | null>(null);
   const hoveredFolderIdRef = useRef<string | null>(null);
   const expandTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scopedImportInputRef = useRef<HTMLInputElement>(null);
+  const importDestinationFolderIdRef = useRef<string | null>(null);
 
   const foldersByParent = useMemo(() => {
     const result = new Map<string | null, Folder[]>();
@@ -398,13 +408,13 @@ export default function NotebookSidebar({
 
   function openMenu(
     event: ReactMouseEvent,
-    kind: "notebook" | "folder",
+    kind: "notebook" | "folder" | "root",
     id: string,
   ) {
     event.preventDefault();
     event.stopPropagation();
     const x = Math.min(event.clientX, window.innerWidth - 190);
-    const y = Math.min(event.clientY, window.innerHeight - 230);
+    const y = Math.min(event.clientY, window.innerHeight - 360);
     setMenuItem({ kind, id, x: Math.max(8, x), y: Math.max(8, y) });
   }
 
@@ -476,6 +486,14 @@ export default function NotebookSidebar({
       ? folders.find((folder) => folder.id === menuItem.id)
       : undefined;
 
+  function chooseScopedImport(destinationFolderId: string | null) {
+    importDestinationFolderIdRef.current = destinationFolderId;
+    if (scopedImportInputRef.current) {
+      scopedImportInputRef.current.value = "";
+      scopedImportInputRef.current.click();
+    }
+  }
+
   return (
     <DragDropProvider
       onDragOver={(event) => {
@@ -505,6 +523,19 @@ export default function NotebookSidebar({
       }}
     >
       <aside className="flex w-full flex-col border-b border-slate-200 bg-white md:h-screen md:w-80 md:border-r md:border-b-0">
+        <input
+          ref={scopedImportInputRef}
+          type="file"
+          accept="application/json,.json"
+          className="hidden"
+          aria-label="Import notebook or folder export"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) {
+              onImportIntoFolder(importDestinationFolderIdRef.current, file);
+            }
+          }}
+        />
         <div className="border-b border-slate-200 p-4">
           <div className="flex items-center justify-between">
             <h1 className="text-lg font-semibold">Notebook</h1>
@@ -548,6 +579,7 @@ export default function NotebookSidebar({
             <RootDropZone id="root-target:unfiled">
               <button
                 type="button"
+                onContextMenu={(event) => openMenu(event, "root", "root")}
                 className={locationButtonClass(
                   locationIsSelected(selectedLocation, "unfiled"),
                 )}
@@ -640,6 +672,60 @@ export default function NotebookSidebar({
         </div>
       </aside>
 
+      {menuItem?.kind === "root" && (
+        <div
+          data-sidebar-context-menu
+          role="menu"
+          className="fixed z-50 w-44 rounded-lg border border-slate-200 bg-white p-1 text-sm shadow-xl"
+          style={{ left: menuItem.x, top: menuItem.y }}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className="w-full rounded px-3 py-2 text-left hover:bg-slate-100"
+            onClick={() => {
+              onSelectLocation({ kind: "unfiled" });
+              setMenuItem(null);
+            }}
+          >
+            Open Unfiled
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="w-full rounded px-3 py-2 text-left hover:bg-slate-100"
+            onClick={() => {
+              onCreateNotebook(null);
+              setMenuItem(null);
+            }}
+          >
+            New notebook
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="w-full rounded px-3 py-2 text-left hover:bg-slate-100"
+            onClick={() => {
+              onCreateFolder(null);
+              setMenuItem(null);
+            }}
+          >
+            New folder
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="w-full rounded px-3 py-2 text-left hover:bg-slate-100"
+            onClick={() => {
+              chooseScopedImport(null);
+              setMenuItem(null);
+            }}
+          >
+            Import here…
+          </button>
+        </div>
+      )}
+
       {menuItem && (menuNotebook || menuFolder) && (
         <div
           data-sidebar-context-menu
@@ -725,6 +811,31 @@ export default function NotebookSidebar({
             }}
           >
             Move to…
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="w-full rounded px-3 py-2 text-left hover:bg-slate-100"
+            onClick={() => {
+              if (menuNotebook) onExportNotebook(menuNotebook.id);
+              if (menuFolder) onExportFolder(menuFolder.id);
+              setMenuItem(null);
+            }}
+          >
+            Export {menuFolder ? "folder" : "notebook"}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="w-full rounded px-3 py-2 text-left hover:bg-slate-100"
+            onClick={() => {
+              chooseScopedImport(
+                menuFolder ? menuFolder.id : (menuNotebook?.folderId ?? null),
+              );
+              setMenuItem(null);
+            }}
+          >
+            {menuFolder ? "Import into folder…" : "Import beside notebook…"}
           </button>
           <div className="my-1 border-t border-slate-200" />
           <button

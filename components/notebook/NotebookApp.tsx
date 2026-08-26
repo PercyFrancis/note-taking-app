@@ -19,6 +19,7 @@ import {
   deleteRemoteNotebook,
   duplicateRemoteCell,
   importRemoteNotebooks,
+  importRemoteScopedWorkspace,
   loadRemoteNotebooks,
   moveRemoteNotebook,
   reorderRemoteCells,
@@ -28,11 +29,19 @@ import {
   updateRemoteCell,
   updateRemoteNotebook,
 } from "@/lib/client/notebook-api";
+import { createNotebookImportInput } from "@/lib/notebook-import";
 import {
   createNotebookExport,
   parseNotebookExport,
 } from "@/lib/notebook-storage";
+import { isScopedWorkspaceExport } from "@/lib/notebook-validation";
+import {
+  createExportFilename,
+  createScopedFolderExport,
+  createScopedNotebookExport,
+} from "@/lib/scoped-workspace-transfer";
 import type {
+  ExcalidrawSceneFlush,
   Folder,
   ImportNotebooksInput,
   Notebook,
@@ -58,6 +67,19 @@ import { primaryButtonClass } from "../ui/buttonStyles";
 import ImportNotebookDialog from "./ImportNotebookDialog";
 
 const STRUCTURAL_HISTORY_LIMIT = 50;
+const MAX_SCOPED_IMPORT_SIZE_BYTES = 25 * 1024 * 1024;
+
+function downloadJson(data: unknown, filename: string) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
 
 type CellPresenceHistoryEntry = {
   kind: "cell-presence";
@@ -859,6 +881,15 @@ export default function NotebookApp() {
   const [isHistoryBusy, setIsHistoryBusy] = useState(false);
   const historyBusyRef = useRef(false);
   const pendingCellOrderNotebookIdsRef = useRef(new Set<string>());
+  const excalidrawFlushesRef = useRef(new Map<string, ExcalidrawSceneFlush>());
+
+  const registerExcalidrawFlush = useCallback(
+    (cellId: string, flush: ExcalidrawSceneFlush | null) => {
+      if (flush) excalidrawFlushesRef.current.set(cellId, flush);
+      else excalidrawFlushesRef.current.delete(cellId);
+    },
+    [],
+  );
 
   const reloadOrganization = useCallback(async () => {
     const [remoteNotebooks, remoteFolders, remoteTrash] = await Promise.all([
@@ -891,18 +922,99 @@ export default function NotebookApp() {
     loadNotebooks();
   }, [reloadOrganization]);
 
-  function exportNotebooks() {
-    const exportData = createNotebookExport(notebooks);
-    const json = JSON.stringify(exportData, null, 2);
-    const blob = new Blob([json], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
+  async function createFlushedExportSnapshot(): Promise<Notebook[]> {
+    const pendingExcalidrawScenes = new Map<string, string | null>();
+    await Promise.all(
+      [...excalidrawFlushesRef.current.entries()].map(
+        async ([cellId, flush]) => {
+          pendingExcalidrawScenes.set(cellId, await flush());
+        },
+      ),
+    );
 
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `notebooks-${Date.now()}.json`;
-    link.click();
+    return notebooks.map((notebook) => ({
+      ...notebook,
+      cells: notebook.cells.map((cell) =>
+        cell.type === "excalidraw" && pendingExcalidrawScenes.has(cell.id)
+          ? {
+              ...cell,
+              drawing: pendingExcalidrawScenes.get(cell.id) ?? null,
+            }
+          : cell,
+      ),
+    }));
+  }
 
-    URL.revokeObjectURL(url);
+  async function exportNotebooks() {
+    try {
+      const exportSnapshot = await createFlushedExportSnapshot();
+      downloadJson(
+        createNotebookExport(exportSnapshot),
+        `notebooks-${Date.now()}.json`,
+      );
+    } catch {
+      window.alert(
+        "Could not finish saving an Excalidraw image. The export was cancelled.",
+      );
+    }
+  }
+
+  async function exportNotebook(notebookId: string) {
+    try {
+      const snapshot = await createFlushedExportSnapshot();
+      const notebook = snapshot.find((item) => item.id === notebookId);
+      if (!notebook) throw new Error("Notebook not found");
+      downloadJson(
+        createScopedNotebookExport(notebook),
+        createExportFilename(notebook.title, "notebook"),
+      );
+    } catch {
+      window.alert("Could not export this notebook.");
+    }
+  }
+
+  async function exportFolder(folderId: string) {
+    try {
+      const snapshot = await createFlushedExportSnapshot();
+      const folder = folders.find((item) => item.id === folderId);
+      const exportData = createScopedFolderExport(folderId, folders, snapshot);
+      if (!folder || !exportData) throw new Error("Folder not found");
+      downloadJson(exportData, createExportFilename(folder.name, "folder"));
+    } catch {
+      window.alert("Could not export this folder.");
+    }
+  }
+
+  async function importScopedWorkspace(
+    destinationFolderId: string | null,
+    file: File,
+  ) {
+    if (file.size > MAX_SCOPED_IMPORT_SIZE_BYTES) {
+      window.alert("This import is larger than the 25 MB limit.");
+      return;
+    }
+
+    try {
+      const parsedWorkspace: unknown = JSON.parse(await file.text());
+      if (!isScopedWorkspaceExport(parsedWorkspace)) {
+        window.alert("This is not a valid notebook or folder export.");
+        return;
+      }
+      const importedRootFolderId = await importRemoteScopedWorkspace(
+        parsedWorkspace,
+        destinationFolderId,
+      );
+      await reloadOrganization();
+      setSelectedLocation(
+        importedRootFolderId
+          ? { kind: "folder", folderId: importedRootFolderId }
+          : destinationFolderId
+            ? { kind: "folder", folderId: destinationFolderId }
+            : { kind: "unfiled" },
+      );
+    } catch {
+      window.alert("Could not import this notebook or folder.");
+    }
   }
 
   type PendingImport = {
@@ -941,33 +1053,18 @@ export default function NotebookApp() {
 
     setIsImporting(true);
     try {
-      const input: ImportNotebooksInput = {
+      const input: ImportNotebooksInput = createNotebookImportInput(
+        pendingImport.notebooks,
         mode,
-        notebooks: pendingImport.notebooks.map((notebook) => ({
-          title: notebook.title,
-          cells: notebook.cells.map((cell) => {
-            if (cell.type === "text") {
-              return {
-                type: "text",
-                content: cell.content,
-                heightPx: cell.heightPx,
-              };
-            }
-
-            return {
-              type: "drawing",
-              drawing: cell.drawing,
-              heightPx: cell.heightPx,
-            };
-          }),
-        })),
-      };
+      );
 
       const nextNotebooks = await importRemoteNotebooks(input);
 
       setNotebooks(nextNotebooks);
       setActiveNotebookId(nextNotebooks[0]?.id ?? "");
       setHistoryByNotebook({});
+      await reloadOrganization();
+      setSelectedLocation({ kind: "all" });
 
       setPendingImport(null);
     } catch {
@@ -1237,6 +1334,11 @@ export default function NotebookApp() {
         onMoveNotebook={moveNotebook}
         onMoveNotebookBefore={moveNotebookBefore}
         onMoveFolder={moveFolder}
+        onExportNotebook={(notebookId) => void exportNotebook(notebookId)}
+        onExportFolder={(folderId) => void exportFolder(folderId)}
+        onImportIntoFolder={(folderId, file) =>
+          void importScopedWorkspace(folderId, file)
+        }
         onRestoreTrashItem={restoreTrashItem}
         onPermanentlyDeleteTrashItem={permanentlyDeleteTrashItem}
       />
@@ -1270,6 +1372,7 @@ export default function NotebookApp() {
           onRedo={() => applyStructuralHistory("redo")}
           onFocusedCellHandled={() => setFocusedCellId(null)}
           onExportNotebooks={exportNotebooks}
+          onRegisterExcalidrawFlush={registerExcalidrawFlush}
           onImportNotebooks={importNotebooks}
         />
       ) : (

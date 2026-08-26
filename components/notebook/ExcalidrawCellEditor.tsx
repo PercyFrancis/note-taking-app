@@ -27,6 +27,7 @@ import {
 import type {
   ExcalidrawCell,
   ExcalidrawImageInsertionRequest,
+  ExcalidrawSceneFlush,
 } from "@/lib/types";
 import { createId } from "@/lib/utils";
 import { secondaryButtonClass } from "../ui/buttonStyles";
@@ -69,8 +70,9 @@ interface PendingSceneSnapshot {
 interface ExcalidrawCellEditorProps {
   cell: ExcalidrawCell;
   imageInsertion: ExcalidrawImageInsertionRequest | null;
-  flushRef: { current: (() => void) | null };
+  flushRef: { current: ExcalidrawSceneFlush | null };
   onChange: (drawing: string) => void;
+  onImageInsertionHandled: (requestId: number) => void;
 }
 
 const CONTENT_SAVE_DELAY_MS = 200;
@@ -188,6 +190,7 @@ export default function ExcalidrawCellEditor({
   imageInsertion,
   flushRef,
   onChange,
+  onImageInsertionHandled,
 }: ExcalidrawCellEditorProps) {
   const { userId } = useAuth();
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -208,6 +211,7 @@ export default function ExcalidrawCellEditor({
     new Map<string, Promise<BinaryFileData>>(),
   );
   const latestSceneSnapshotRef = useRef<PendingSceneSnapshot | null>(null);
+  const activeSceneCommitRef = useRef<Promise<string | null> | null>(null);
   const lastContentRevisionKeyRef = useRef<string | null>(null);
   const lastViewRevisionKeyRef = useRef<string | null>(null);
   const contentSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -217,7 +221,7 @@ export default function ExcalidrawCellEditor({
   const maximumSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
-  const flushLatestSceneRef = useRef<(() => void) | null>(null);
+  const flushLatestSceneRef = useRef<ExcalidrawSceneFlush | null>(null);
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -319,6 +323,7 @@ export default function ExcalidrawCellEditor({
         handledImageInsertionRequestIdRef.current = imageInsertion.requestId;
         insertingImageRequestIdRef.current = null;
         setImageUploadError("");
+        onImageInsertionHandled(imageInsertion.requestId);
       })
       .catch((error: unknown) => {
         if (isCancelled) return;
@@ -329,6 +334,7 @@ export default function ExcalidrawCellEditor({
             : "Could not insert the library image.",
         );
         insertingImageRequestIdRef.current = null;
+        onImageInsertionHandled(imageInsertion.requestId);
       });
 
     return () => {
@@ -336,8 +342,9 @@ export default function ExcalidrawCellEditor({
       if (insertingImageRequestIdRef.current === imageInsertion.requestId) {
         insertingImageRequestIdRef.current = null;
       }
+      onImageInsertionHandled(imageInsertion.requestId);
     };
-  }, [cell.id, excalidrawApi, imageInsertion]);
+  }, [cell.id, excalidrawApi, imageInsertion, onImageInsertionHandled]);
 
   const getHostedFile = useCallback(
     (file: BinaryFileData): Promise<BinaryFileData> => {
@@ -431,11 +438,15 @@ export default function ExcalidrawCellEditor({
   }, []);
 
   const commitScene = useCallback(
-    ({ elements, appState, files }: PendingSceneSnapshot) => {
+    async ({
+      elements,
+      appState,
+      files,
+    }: PendingSceneSnapshot): Promise<string | null> => {
       const revision = sceneRevisionRef.current + 1;
       sceneRevisionRef.current = revision;
 
-      const persistHostedScene = (hostedFiles: BinaryFiles) => {
+      const persistHostedScene = (hostedFiles: BinaryFiles): string => {
         const scene: StoredExcalidrawScene = {
           version: 1,
           source: "excalidraw",
@@ -454,12 +465,13 @@ export default function ExcalidrawCellEditor({
         const serializedScene = JSON.stringify(scene);
 
         if (serializedScene === lastSerializedSceneRef.current) {
-          return;
+          return serializedScene;
         }
 
         lastSerializedSceneRef.current = serializedScene;
         setImageUploadError("");
         onChangeRef.current(serializedScene);
+        return serializedScene;
       };
 
       const fileEntries = Object.entries(files);
@@ -468,46 +480,59 @@ export default function ExcalidrawCellEditor({
       );
 
       if (!hasUnhostedImage) {
-        persistHostedScene(files);
-        return;
+        return persistHostedScene(files);
       }
 
-      void Promise.all(
-        fileEntries.map(
-          async ([fileId, file]) =>
-            [fileId, await getHostedFile(file)] as const,
-        ),
-      )
-        .then((hostedFileEntries) => {
-          if (!isMountedRef.current || sceneRevisionRef.current !== revision) {
-            return;
-          }
-
-          persistHostedScene(
-            Object.fromEntries(hostedFileEntries) as BinaryFiles,
-          );
-        })
-        .catch((error: unknown) => {
-          if (!isMountedRef.current) return;
-
+      try {
+        const hostedFileEntries = await Promise.all(
+          fileEntries.map(
+            async ([fileId, file]) =>
+              [fileId, await getHostedFile(file)] as const,
+          ),
+        );
+        if (!isMountedRef.current || sceneRevisionRef.current !== revision) {
+          return lastSerializedSceneRef.current;
+        }
+        return persistHostedScene(
+          Object.fromEntries(hostedFileEntries) as BinaryFiles,
+        );
+      } catch (error: unknown) {
+        if (isMountedRef.current) {
           setImageUploadError(
             error instanceof Error
               ? error.message
               : "Could not upload the pasted image.",
           );
-        });
+        }
+        throw error;
+      }
     },
     [getHostedFile],
   );
 
-  const flushPendingScene = useCallback(() => {
-    const snapshot = latestSceneSnapshotRef.current;
-
-    if (!snapshot) return;
-
-    latestSceneSnapshotRef.current = null;
+  const flushPendingScene = useCallback(async (): Promise<string | null> => {
     clearSaveTimers();
-    commitScene(snapshot);
+    let serializedScene = lastSerializedSceneRef.current;
+
+    if (activeSceneCommitRef.current) {
+      serializedScene = await activeSceneCommitRef.current;
+    }
+
+    while (latestSceneSnapshotRef.current) {
+      const snapshot = latestSceneSnapshotRef.current;
+      latestSceneSnapshotRef.current = null;
+      const commitPromise = commitScene(snapshot);
+      activeSceneCommitRef.current = commitPromise;
+      try {
+        serializedScene = await commitPromise;
+      } finally {
+        if (activeSceneCommitRef.current === commitPromise) {
+          activeSceneCommitRef.current = null;
+        }
+      }
+    }
+
+    return serializedScene;
   }, [clearSaveTimers, commitScene]);
 
   const persistScene = useCallback(
@@ -534,26 +559,23 @@ export default function ExcalidrawCellEditor({
           clearTimeout(contentSaveTimerRef.current);
         }
 
-        contentSaveTimerRef.current = setTimeout(
-          flushPendingScene,
-          CONTENT_SAVE_DELAY_MS,
-        );
+        contentSaveTimerRef.current = setTimeout(() => {
+          void flushPendingScene().catch(() => undefined);
+        }, CONTENT_SAVE_DELAY_MS);
       } else if (viewChanged) {
         if (viewSaveTimerRef.current) {
           clearTimeout(viewSaveTimerRef.current);
         }
 
-        viewSaveTimerRef.current = setTimeout(
-          flushPendingScene,
-          VIEW_SAVE_DELAY_MS,
-        );
+        viewSaveTimerRef.current = setTimeout(() => {
+          void flushPendingScene().catch(() => undefined);
+        }, VIEW_SAVE_DELAY_MS);
       }
 
       if (!maximumSaveTimerRef.current) {
-        maximumSaveTimerRef.current = setTimeout(
-          flushPendingScene,
-          MAX_SAVE_WAIT_MS,
-        );
+        maximumSaveTimerRef.current = setTimeout(() => {
+          void flushPendingScene().catch(() => undefined);
+        }, MAX_SAVE_WAIT_MS);
       }
     },
     [flushPendingScene],
@@ -566,15 +588,19 @@ export default function ExcalidrawCellEditor({
 
     function flushWhenPageIsHidden() {
       if (document.visibilityState === "hidden") {
-        flushPendingScene();
+        void flushPendingScene().catch(() => undefined);
       }
     }
 
-    window.addEventListener("pagehide", flushPendingScene);
+    const flushOnPageHide = () => {
+      void flushPendingScene().catch(() => undefined);
+    };
+
+    window.addEventListener("pagehide", flushOnPageHide);
     document.addEventListener("visibilitychange", flushWhenPageIsHidden);
 
     return () => {
-      flushPendingScene();
+      void flushPendingScene().catch(() => undefined);
       clearSaveTimers();
       if (flushRef.current === flushPendingScene) {
         flushRef.current = null;
@@ -583,7 +609,7 @@ export default function ExcalidrawCellEditor({
         flushLatestSceneRef.current = null;
       }
       isMountedRef.current = false;
-      window.removeEventListener("pagehide", flushPendingScene);
+      window.removeEventListener("pagehide", flushOnPageHide);
       document.removeEventListener("visibilitychange", flushWhenPageIsHidden);
     };
   }, [clearSaveTimers, flushPendingScene, flushRef]);
