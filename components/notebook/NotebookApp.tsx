@@ -956,8 +956,12 @@ export default function NotebookApp() {
     async function loadNotebooks() {
       try {
         await reloadOrganization();
-      } catch {
-        window.alert("Could not load your notebook workspace.");
+      } catch (error) {
+        window.alert(
+          error instanceof Error
+            ? `Could not load your notebook workspace. ${error.message}`
+            : "Could not load your notebook workspace.",
+        );
         setIsLoadingNotebooks(false);
         return;
       }

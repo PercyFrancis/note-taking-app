@@ -1,5 +1,9 @@
 # Future Feature Roadmap
 
+## Standalone PDF Annotation Editor (Implemented)
+
+The `/pdf-editor` route provides PDF.js rendering, page thumbnails, per-page Excalidraw annotations, guest IndexedDB storage, signed-in private Blob/Neon storage, configurable size and page limits, flattened PDF export, and portable editable `.notepdf` projects. Future scope can add external PDF annotation image assets, background export jobs, resumable uploads, text search/extraction, and higher production limits without changing the per-page data model.
+
 ## Browser-Local Guest Mode (Implemented)
 
 Signed-out users receive a separate IndexedDB workspace with notebooks, folders, all cell engines, Trash, settings, local images, imports, and exports. The original localStorage branch supplies the legacy migration format, while current data uses asynchronous versioned IndexedDB storage and Blob attachment records. Storage usage, quota warnings, persistence requests, and an explicit copy-to-account flow protect the boundary between local and cloud workspaces.

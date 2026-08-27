@@ -22,6 +22,8 @@ import {
 } from "../utils";
 import { sql } from "./db";
 
+const NOTEBOOK_CELL_QUERY_BATCH_SIZE = 10;
+
 function mapCellRowToNotebookCell(row: CellRow): NotebookCell {
   const baseCell = {
     id: row.id,
@@ -71,24 +73,42 @@ export async function getNotebooks(userId: string): Promise<Notebook[]> {
 
   const notebookIds = notebookRows.map((notebook) => notebook.id);
 
-  const cellRows = (await sql.query(
-    `
-      select
-        id,
-        notebook_id,
-        type,
-        position,
-        content,
-        drawing,
-        height_px,
-        created_at,
-        updated_at
-      from cells
-      where notebook_id = any($1::uuid[])
-      order by notebook_id asc, position asc
-    `,
-    [notebookIds],
-  )) as CellRow[];
+  // Legacy canvas cells can contain large data URLs. Fetching every cell in a
+  // mature workspace in one Neon HTTP response can exceed the transport limit.
+  const notebookIdBatches = Array.from(
+    {
+      length: Math.ceil(notebookIds.length / NOTEBOOK_CELL_QUERY_BATCH_SIZE),
+    },
+    (_, index) =>
+      notebookIds.slice(
+        index * NOTEBOOK_CELL_QUERY_BATCH_SIZE,
+        (index + 1) * NOTEBOOK_CELL_QUERY_BATCH_SIZE,
+      ),
+  );
+  const cellRowBatches = await Promise.all(
+    notebookIdBatches.map(
+      async (notebookIdBatch) =>
+        (await sql.query(
+          `
+            select
+              id,
+              notebook_id,
+              type,
+              position,
+              content,
+              drawing,
+              height_px,
+              created_at,
+              updated_at
+            from cells
+            where notebook_id = any($1::uuid[])
+            order by notebook_id asc, position asc
+          `,
+          [notebookIdBatch],
+        )) as CellRow[],
+    ),
+  );
+  const cellRows = cellRowBatches.flat();
 
   const cellsByNotebookId = new Map<string, NotebookCell[]>();
 

@@ -2,6 +2,7 @@
 
 import { SignInButton, UserButton } from "@clerk/nextjs";
 import { DragDropProvider, useDraggable, useDroppable } from "@dnd-kit/react";
+import Link from "next/link";
 import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
@@ -577,6 +578,13 @@ export default function NotebookSidebar({
           <div className="flex items-center justify-between">
             <h1 className="text-lg font-semibold">Notebook</h1>
             <div className="flex items-center gap-2">
+              <Link
+                href="/pdf-editor"
+                className="inline-flex h-8 items-center justify-center rounded-md px-2 text-xs font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                title="Open PDF editor"
+              >
+                PDF editor
+              </Link>
               <button
                 type="button"
                 onClick={onOpenSettings}

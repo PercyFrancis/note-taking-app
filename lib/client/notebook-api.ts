@@ -23,13 +23,13 @@ export async function loadRemoteNotebooks(): Promise<Notebook[]> {
   const response = await fetch("/api/notebooks");
 
   if (!response.ok) {
-    throw new Error("Failed to load notebooks");
+    throw new Error(`Notebooks request failed (${response.status})`);
   }
 
   const data: unknown = await response.json();
 
   if (!isNotebooksResponse(data)) {
-    throw new Error("Invalid notebooks response");
+    throw new Error("The notebooks response was invalid");
   }
 
   return data.notebooks;

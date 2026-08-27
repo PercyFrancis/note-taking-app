@@ -14,6 +14,23 @@ Guest changes save asynchronously after 250 ms. **Settings → Data** reports ap
 
 The older `localstorage-version` branch is migrated automatically when its validated `note-taking-app:notebooks` value is present and IndexedDB has no current guest workspace. JSON and portable notebook/folder import and export work locally. When a user signs in with meaningful guest data present, the app offers to copy it into an **Imported local workspace** cloud folder or keep the local and cloud workspaces separate. Import uploads referenced local images into the account's private Blob storage, regenerates imported database IDs, and leaves the original device-local workspace untouched.
 
+## PDF Editor
+
+Open **PDF editor** from the notebook sidebar or navigate to `/pdf-editor`. It is a separate workspace with a PDF document library, page thumbnails, one active page at a time, and an Excalidraw annotation layer for pens, highlighting, text, arrows, and shapes. Annotation changes save per page after a 450 ms debounce. Signed-in documents use private Vercel Blob files plus Neon annotation records; signed-out documents use a separate IndexedDB database.
+
+**Annotated PDF** flattens the visible annotations onto a copy of the original PDF. **Editable project** creates a `.notepdf` ZIP containing the original PDF and editable page scenes; **Open project** restores that archive. Images in the PDF annotation toolbar are intentionally disabled until PDF-specific image assets can be externalized to Blob/IndexedDB rather than embedded in database scene JSON.
+
+Apply `db/migrations/009_create_pdf_documents.sql` with `pnpm db:migrate` before using cloud PDF storage. Upload restrictions are configured independently:
+
+```env
+PDF_MAX_UPLOAD_BYTES=52428800
+PDF_MAX_PAGES=200
+NEXT_PUBLIC_GUEST_PDF_MAX_UPLOAD_BYTES=104857600
+NEXT_PUBLIC_GUEST_PDF_MAX_PAGES=200
+```
+
+Use the literal value `unlimited` to remove an application-level restriction. Cloud uploads still retain a 5 GB emergency ceiling, and browser/provider limits continue to apply.
+
 ## Notebook Folders And Trash
 
 Notebooks use a filesystem-style organization model. Each notebook is stored either at the workspace root (**Unfiled**) or in one nested folder. The sidebar provides **All notes**, **Unfiled**, and **Trash** virtual locations alongside an expandable folder tree. Use a notebook or folder's drag handle to move it, or right-click it (or select its **…** button) and choose **Move to…** to open the searchable folder picker. Dropping a notebook between notebook rows reorders it, hovering over a collapsed folder while dragging expands it, and circular folder moves are rejected. The editor breadcrumb shows the active notebook's folder path.

@@ -9,7 +9,7 @@ export async function loadRemoteFolders(): Promise<Folder[]> {
   const response = await fetch("/api/folders");
   const data: unknown = await response.json();
   if (!response.ok || !isFoldersResponse(data)) {
-    throw new Error("Failed to load folders");
+    throw new Error(`Folders request failed (${response.status})`);
   }
   return data.folders;
 }
@@ -84,7 +84,7 @@ export async function loadRemoteTrash(): Promise<TrashItem[]> {
   const response = await fetch("/api/trash");
   const data: unknown = await response.json();
   if (!response.ok || !isTrashResponse(data)) {
-    throw new Error("Failed to load Trash");
+    throw new Error(`Trash request failed (${response.status})`);
   }
   return data.items;
 }

@@ -161,3 +161,7 @@ body {
 .markdown-preview code::after {
   content: none;
 }
+.pdf-annotation-layer .excalidraw,
+.pdf-annotation-layer .excalidraw .App-menu_top {
+  background: transparent;
+}
