@@ -19,6 +19,7 @@ interface CellListProps {
   excalidrawImageInsertion: ExcalidrawImageInsertionRequest | null;
   isTouchDrawingEnabled: boolean;
   showLegacyDrawingControls: boolean;
+  isDarkMode: boolean;
   onUpdateTextCell: (cellId: string, content: string) => void;
   onUpdateDrawingCell: (cellId: string, drawing: string | null) => void;
   onUpdateCellHeight: (cellId: string, heightPx: number) => void;
@@ -49,6 +50,7 @@ export default function CellList({
   excalidrawImageInsertion,
   isTouchDrawingEnabled,
   showLegacyDrawingControls,
+  isDarkMode,
   onUpdateTextCell,
   onUpdateDrawingCell,
   onUpdateCellHeight,
@@ -104,6 +106,7 @@ export default function CellList({
                 ? excalidrawImageInsertion
                 : null
             }
+            isDarkMode={isDarkMode}
             isTouchDrawingEnabled={isTouchDrawingEnabled}
             showLegacyDrawingControls={showLegacyDrawingControls}
             onUpdateTextCell={onUpdateTextCell}

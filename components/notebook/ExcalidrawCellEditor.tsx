@@ -69,6 +69,7 @@ interface PendingSceneSnapshot {
 
 interface ExcalidrawCellEditorProps {
   cell: ExcalidrawCell;
+  isDarkMode: boolean;
   imageInsertion: ExcalidrawImageInsertionRequest | null;
   flushRef: { current: ExcalidrawSceneFlush | null };
   onChange: (drawing: string) => void;
@@ -187,6 +188,7 @@ function parseScene(drawing: string | null): ExcalidrawInitialDataState | null {
 
 export default function ExcalidrawCellEditor({
   cell,
+  isDarkMode,
   imageInsertion,
   flushRef,
   onChange,
@@ -660,6 +662,7 @@ export default function ExcalidrawCellEditor({
       >
         <Excalidraw
           initialData={initialData}
+          theme={isDarkMode ? "dark" : "light"}
           excalidrawAPI={setExcalidrawApi}
           onChange={persistScene}
           autoFocus={false}

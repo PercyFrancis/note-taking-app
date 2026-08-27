@@ -7,6 +7,7 @@ import {
   createScopedNotebookExport,
   hasValidScopedFolderHierarchy,
 } from "../lib/scoped-workspace-transfer.ts";
+import { DEFAULT_USER_SETTINGS, isUserSettings } from "../lib/settings.ts";
 
 const validScene = JSON.stringify({
   version: 1,
@@ -168,4 +169,24 @@ test("scoped import rejects cyclic folder exports", () => {
   ];
 
   assert.equal(hasValidScopedFolderHierarchy(folders, firstId), false);
+});
+
+test("settings validation accepts complete preferences", () => {
+  assert.equal(isUserSettings(DEFAULT_USER_SETTINGS), true);
+  assert.equal(
+    isUserSettings({
+      ...DEFAULT_USER_SETTINGS,
+      accent: "violet",
+      theme: "dark",
+    }),
+    true,
+  );
+});
+
+test("settings validation rejects unknown themes and incomplete values", () => {
+  assert.equal(
+    isUserSettings({ ...DEFAULT_USER_SETTINGS, theme: "midnight" }),
+    false,
+  );
+  assert.equal(isUserSettings({ theme: "system", accent: "blue" }), false);
 });

@@ -1,5 +1,19 @@
 export type CellType = "text" | "drawing" | "excalidraw";
 
+export type ThemeMode = "original" | "light" | "dark" | "system";
+export type AccentColor = "blue" | "violet" | "emerald" | "rose" | "amber";
+
+export interface UserSettings {
+  theme: ThemeMode;
+  accent: AccentColor;
+  touchDrawingEnabled: boolean;
+  legacyCanvasToolsVisible: boolean;
+}
+
+export interface UserSettingsResponse {
+  settings: UserSettings;
+}
+
 export interface BaseCell {
   id: string;
   type: CellType;

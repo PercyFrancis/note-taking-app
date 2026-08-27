@@ -3,7 +3,7 @@ const buttonBaseClass =
 
 export const primaryButtonClass = [
   buttonBaseClass,
-  "bg-slate-900 text-white hover:bg-slate-700",
+  "app-primary bg-sky-600 text-white hover:bg-sky-700 focus-visible:ring-sky-500",
   "h-10 px-3 text-sm",
 ].join(" ");
 

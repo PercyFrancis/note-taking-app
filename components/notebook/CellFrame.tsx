@@ -26,6 +26,7 @@ interface CellFrameProps {
   excalidrawImageInsertion: ExcalidrawImageInsertionRequest | null;
   isTouchDrawingEnabled: boolean;
   showLegacyDrawingControls: boolean;
+  isDarkMode: boolean;
   onUpdateTextCell: (cellId: string, content: string) => void;
   onUpdateDrawingCell: (cellId: string, drawing: string | null) => void;
   onUpdateCellHeight: (cellId: string, heightPx: number) => void;
@@ -56,6 +57,7 @@ export default function CellFrame({
   excalidrawImageInsertion,
   isTouchDrawingEnabled,
   showLegacyDrawingControls,
+  isDarkMode,
   onUpdateTextCell,
   onUpdateDrawingCell,
   onUpdateCellHeight,
@@ -243,6 +245,7 @@ export default function CellFrame({
       ) : (
         <ExcalidrawCellEditor
           cell={cell}
+          isDarkMode={isDarkMode}
           imageInsertion={excalidrawImageInsertion}
           flushRef={excalidrawFlushRef}
           onChange={(drawing) => onUpdateDrawingCell(cell.id, drawing)}

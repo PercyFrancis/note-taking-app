@@ -13,11 +13,8 @@ import type {
   TextCellMatch,
   TextSelectionRequest,
   UploadedImage,
+  UserSettings,
 } from "@/lib/types";
-
-const TOUCH_DRAWING_STORAGE_KEY = "note-taking-app:draw-with-touch";
-const LEGACY_DRAWING_CONTROLS_STORAGE_KEY =
-  "note-taking-app:show-legacy-drawing-controls";
 
 interface NotebookEditorProps {
   notebook: Notebook;
@@ -53,6 +50,8 @@ interface NotebookEditorProps {
     flush: ExcalidrawSceneFlush | null,
   ) => void;
   onImportNotebooks: (file: File) => void;
+  settings: UserSettings;
+  isDarkMode: boolean;
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {
@@ -103,12 +102,11 @@ export default function NotebookEditor({
   onExportNotebooks,
   onRegisterExcalidrawFlush,
   onImportNotebooks,
+  settings,
+  isDarkMode,
 }: NotebookEditorProps) {
   const [isFindOpen, setIsFindOpen] = useState(false);
   const [isImageLibraryOpen, setIsImageLibraryOpen] = useState(false);
-  const [isTouchDrawingEnabled, setIsTouchDrawingEnabled] = useState(false);
-  const [showLegacyDrawingControls, setShowLegacyDrawingControls] =
-    useState(false);
   const [findFocusRequestId, setFindFocusRequestId] = useState(0);
   const [findQuery, setFindQuery] = useState("");
   const [selectedCellId, setSelectedCellId] = useState<string | null>(null);
@@ -136,54 +134,6 @@ export default function NotebookEditor({
       setExcalidrawImageInsertion(null);
     }
   }, [notebook.id]);
-  useEffect(() => {
-    try {
-      setIsTouchDrawingEnabled(
-        window.localStorage.getItem(TOUCH_DRAWING_STORAGE_KEY) === "true",
-      );
-      setShowLegacyDrawingControls(
-        window.localStorage.getItem(LEGACY_DRAWING_CONTROLS_STORAGE_KEY) ===
-          "true",
-      );
-    } catch {
-      // Drawing still works with the default when browser storage is blocked.
-    }
-  }, []);
-
-  function toggleTouchDrawing() {
-    setIsTouchDrawingEnabled((currentValue) => {
-      const nextValue = !currentValue;
-
-      try {
-        window.localStorage.setItem(
-          TOUCH_DRAWING_STORAGE_KEY,
-          String(nextValue),
-        );
-      } catch {
-        // The in-memory preference remains useful for this session.
-      }
-
-      return nextValue;
-    });
-  }
-
-  function toggleLegacyDrawingControls() {
-    setShowLegacyDrawingControls((currentValue) => {
-      const nextValue = !currentValue;
-
-      try {
-        window.localStorage.setItem(
-          LEGACY_DRAWING_CONTROLS_STORAGE_KEY,
-          String(nextValue),
-        );
-      } catch {
-        // The in-memory preference remains useful for this session.
-      }
-
-      return nextValue;
-    });
-  }
-
   function openFind() {
     setIsFindOpen(true);
     setFindFocusRequestId((currentRequestId) => currentRequestId + 1);
@@ -354,10 +304,7 @@ export default function NotebookEditor({
             onAddTextCell={onAddTextCell}
             onAddDrawingCell={onAddDrawingCell}
             onAddLegacyDrawingCell={onAddLegacyDrawingCell}
-            showLegacyDrawingControls={showLegacyDrawingControls}
-            onToggleLegacyDrawingControls={toggleLegacyDrawingControls}
-            isTouchDrawingEnabled={isTouchDrawingEnabled}
-            onToggleTouchDrawing={toggleTouchDrawing}
+            showLegacyDrawingControls={settings.legacyCanvasToolsVisible}
             onOpenFind={openFind}
             onOpenImageLibrary={() => setIsImageLibraryOpen(true)}
             onExportNotebooks={onExportNotebooks}
@@ -389,8 +336,9 @@ export default function NotebookEditor({
         textSelection={textSelection}
         markdownInsertion={markdownInsertion}
         excalidrawImageInsertion={excalidrawImageInsertion}
-        isTouchDrawingEnabled={isTouchDrawingEnabled}
-        showLegacyDrawingControls={showLegacyDrawingControls}
+        isTouchDrawingEnabled={settings.touchDrawingEnabled}
+        showLegacyDrawingControls={settings.legacyCanvasToolsVisible}
+        isDarkMode={isDarkMode}
         onUpdateTextCell={onUpdateTextCell}
         onUpdateDrawingCell={onUpdateDrawingCell}
         onUpdateCellHeight={onUpdateCellHeight}

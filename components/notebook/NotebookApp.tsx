@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import NotebookEditor from "@/components/notebook/NotebookEditor";
 import NotebookSidebar from "@/components/notebook/NotebookSidebar";
+import SettingsDialog from "@/components/notebook/SettingsDialog";
 import {
   createRemoteFolder,
   deleteRemoteFolder,
@@ -30,6 +31,10 @@ import {
   updateRemoteNotebook,
 } from "@/lib/client/notebook-api";
 import { importPortableWorkspace } from "@/lib/client/portable-import-api";
+import {
+  loadRemoteSettings,
+  saveRemoteSettings,
+} from "@/lib/client/settings-api";
 import { createNotebookImportInput } from "@/lib/notebook-import";
 import {
   createNotebookExport,
@@ -46,6 +51,14 @@ import {
   createScopedFolderExport,
   createScopedNotebookExport,
 } from "@/lib/scoped-workspace-transfer";
+import {
+  applyAppearance,
+  LEGACY_CANVAS_TOOLS_STORAGE_KEY,
+  LEGACY_TOUCH_DRAWING_STORAGE_KEY,
+  loadLocalSettings,
+  SETTINGS_STORAGE_KEY,
+  saveLocalSettings,
+} from "@/lib/settings";
 import type {
   ExcalidrawSceneFlush,
   Folder,
@@ -56,6 +69,7 @@ import type {
   TrashItem,
   UpdateCellInput,
   UpdateNotebookInput,
+  UserSettings,
 } from "@/lib/types";
 import {
   applyCellHeightUpdate,
@@ -894,7 +908,17 @@ export default function NotebookApp() {
     Record<string, NotebookHistory>
   >({});
   const [isHistoryBusy, setIsHistoryBusy] = useState(false);
+  const [settings, setSettings] = useState<UserSettings>(loadLocalSettings);
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsSaveStatus, setSettingsSaveStatus] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle");
   const historyBusyRef = useRef(false);
+  const settingsSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const settingsChangedRef = useRef(false);
   const pendingCellOrderNotebookIdsRef = useRef(new Set<string>());
   const excalidrawFlushesRef = useRef(new Map<string, ExcalidrawSceneFlush>());
 
@@ -936,6 +960,71 @@ export default function NotebookApp() {
 
     loadNotebooks();
   }, [reloadOrganization]);
+
+  useEffect(() => {
+    const applyResolvedAppearance = () => {
+      applyAppearance(settings);
+      setIsDarkMode(document.documentElement.classList.contains("dark"));
+    };
+    applyResolvedAppearance();
+    if (settings.theme !== "system") return;
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleSystemThemeChange = () => applyResolvedAppearance();
+    media.addEventListener("change", handleSystemThemeChange);
+    return () => media.removeEventListener("change", handleSystemThemeChange);
+  }, [settings]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function synchronizeSettings() {
+      try {
+        const hasLegacyPreference =
+          window.localStorage.getItem(LEGACY_TOUCH_DRAWING_STORAGE_KEY) !==
+            null ||
+          window.localStorage.getItem(LEGACY_CANVAS_TOOLS_STORAGE_KEY) !== null;
+        const hasCurrentLocalSettings =
+          window.localStorage.getItem(SETTINGS_STORAGE_KEY) !== null;
+        if (!hasCurrentLocalSettings && hasLegacyPreference) {
+          const migratedSettings = loadLocalSettings();
+          saveLocalSettings(migratedSettings);
+          await saveRemoteSettings(migratedSettings);
+          if (!cancelled) setSettingsSaveStatus("saved");
+          return;
+        }
+        const remoteSettings = await loadRemoteSettings();
+        if (!cancelled && !settingsChangedRef.current) {
+          setSettings(remoteSettings);
+          saveLocalSettings(remoteSettings);
+        }
+      } catch {
+        // Local settings remain active if account synchronization is unavailable.
+      }
+    }
+    void synchronizeSettings();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function updateSettings(nextSettings: UserSettings) {
+    settingsChangedRef.current = true;
+    setSettings(nextSettings);
+    saveLocalSettings(nextSettings);
+    applyAppearance(nextSettings);
+    setIsDarkMode(document.documentElement.classList.contains("dark"));
+    setSettingsSaveStatus("saving");
+    if (settingsSaveTimerRef.current) {
+      clearTimeout(settingsSaveTimerRef.current);
+    }
+    settingsSaveTimerRef.current = setTimeout(async () => {
+      try {
+        await saveRemoteSettings(nextSettings);
+        setSettingsSaveStatus("saved");
+      } catch {
+        setSettingsSaveStatus("error");
+      }
+    }, 400);
+  }
 
   async function createFlushedExportSnapshot(): Promise<Notebook[]> {
     const pendingExcalidrawScenes = new Map<string, string | null>();
@@ -1447,6 +1536,7 @@ export default function NotebookApp() {
         }
         onRestoreTrashItem={restoreTrashItem}
         onPermanentlyDeleteTrashItem={permanentlyDeleteTrashItem}
+        onOpenSettings={() => setIsSettingsOpen(true)}
       />
       {activeNotebook && selectedLocation.kind !== "trash" ? (
         <NotebookEditor
@@ -1480,6 +1570,8 @@ export default function NotebookApp() {
           onExportNotebooks={exportNotebooks}
           onRegisterExcalidrawFlush={registerExcalidrawFlush}
           onImportNotebooks={importNotebooks}
+          settings={settings}
+          isDarkMode={isDarkMode}
         />
       ) : (
         <section className="flex min-w-0 flex-1 items-center justify-center bg-slate-50 px-6 py-12">
@@ -1518,6 +1610,14 @@ export default function NotebookApp() {
           onAppend={() => confirmNotebookImport("append")}
           onReplace={() => confirmNotebookImport("replace")}
           onCancel={() => setPendingImport(null)}
+        />
+      )}
+      {isSettingsOpen && (
+        <SettingsDialog
+          settings={settings}
+          saveStatus={settingsSaveStatus}
+          onChange={updateSettings}
+          onClose={() => setIsSettingsOpen(false)}
         />
       )}
     </main>

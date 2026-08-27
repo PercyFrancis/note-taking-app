@@ -338,7 +338,7 @@ export default function TextCellEditor({
       "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2",
       isActive
-        ? "bg-slate-900 text-white shadow-sm"
+        ? "app-selected bg-sky-600 text-white shadow-sm"
         : "text-slate-500 hover:bg-white hover:text-slate-900",
     ].join(" ");
   };

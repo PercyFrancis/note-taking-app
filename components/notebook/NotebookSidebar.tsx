@@ -45,6 +45,7 @@ interface NotebookSidebarProps {
   onImportPortableIntoFolder: (folderId: string | null, file: File) => void;
   onRestoreTrashItem: (item: TrashItem) => void;
   onPermanentlyDeleteTrashItem: (item: TrashItem) => void;
+  onOpenSettings: () => void;
 }
 
 type DragData = { kind: "notebook" | "folder"; itemId: string };
@@ -156,7 +157,7 @@ function FolderRow({
       aria-expanded={hasChildren ? isExpanded : undefined}
       onContextMenu={(event) => onOpenMenu(event, "folder", folder.id)}
       className={`group flex items-center rounded-md text-sm transition ${
-        isSelected ? "bg-slate-900 text-white" : "hover:bg-slate-100"
+        isSelected ? "app-selected bg-sky-600 text-white" : "hover:bg-slate-100"
       } ${
         isDragging ? "opacity-45" : ""
       } ${isDropTarget ? "ring-2 ring-sky-500 ring-inset" : ""}`}
@@ -242,7 +243,7 @@ function NotebookRow({
       ref={setRef}
       onContextMenu={(event) => onOpenMenu(event, "notebook", notebook.id)}
       className={`group relative rounded-md p-2 transition ${
-        isActive ? "bg-slate-900 text-white" : "hover:bg-slate-100"
+        isActive ? "app-selected bg-sky-600 text-white" : "hover:bg-slate-100"
       } ${isDragging ? "opacity-45" : ""} ${
         isDropTarget
           ? "before:absolute before:inset-x-1 before:top-0 before:h-0.5 before:bg-sky-500"
@@ -344,6 +345,7 @@ export default function NotebookSidebar({
   onImportPortableIntoFolder,
   onRestoreTrashItem,
   onPermanentlyDeleteTrashItem,
+  onOpenSettings,
 }: NotebookSidebarProps) {
   const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(
     () => new Set(),
@@ -482,7 +484,9 @@ export default function NotebookSidebar({
 
   const locationButtonClass = (selected: boolean) =>
     `w-full rounded-md px-3 py-2 text-left text-sm ${
-      selected ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
+      selected
+        ? "app-selected bg-sky-600 text-white"
+        : "text-slate-700 hover:bg-slate-100"
     }`;
   const menuNotebook =
     menuItem?.kind === "notebook"
@@ -570,7 +574,18 @@ export default function NotebookSidebar({
         <div className="border-b border-slate-200 p-4">
           <div className="flex items-center justify-between">
             <h1 className="text-lg font-semibold">Notebook</h1>
-            <UserButton />
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onOpenSettings}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                aria-label="Open settings"
+                title="Settings"
+              >
+                ⚙
+              </button>
+              <UserButton />
+            </div>
           </div>
           <div className="mt-3 flex gap-2">
             <button

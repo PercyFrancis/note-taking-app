@@ -324,7 +324,7 @@ export default function DrawingCellEditor({
           aria-pressed={tool === "pen"}
           className={`rounded-md border px-3 py-1.5 text-sm font-medium transition ${
             tool === "pen"
-              ? "border-slate-900 bg-slate-900 text-white outline-none focus-visible:border-slate-400 focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
+              ? "app-selected border-sky-600 bg-sky-600 text-white outline-none focus-visible:border-sky-400 focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2"
               : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100 outline-none focus-visible:border-slate-400 focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
           }`}
         >
@@ -337,7 +337,7 @@ export default function DrawingCellEditor({
           aria-pressed={tool === "eraser"}
           className={`rounded-md border px-3 py-1.5 text-sm font-medium transition ${
             tool === "eraser"
-              ? "border-slate-900 bg-slate-900 text-white outline-none focus-visible:border-slate-400 focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
+              ? "app-selected border-sky-600 bg-sky-600 text-white outline-none focus-visible:border-sky-400 focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2"
               : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100 outline-none focus-visible:border-slate-400 focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
           }`}
         >

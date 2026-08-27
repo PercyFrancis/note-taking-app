@@ -17,9 +17,6 @@ interface NotebookToolbarProps {
   onAddDrawingCell: () => void;
   onAddLegacyDrawingCell: () => void;
   showLegacyDrawingControls: boolean;
-  onToggleLegacyDrawingControls: () => void;
-  isTouchDrawingEnabled: boolean;
-  onToggleTouchDrawing: () => void;
   onOpenFind: () => void;
   onOpenImageLibrary: () => void;
   onExportNotebooks: () => void;
@@ -37,9 +34,6 @@ export default function NotebookToolbar({
   onAddDrawingCell,
   onAddLegacyDrawingCell,
   showLegacyDrawingControls,
-  onToggleLegacyDrawingControls,
-  isTouchDrawingEnabled,
-  onToggleTouchDrawing,
   onOpenFind,
   onOpenImageLibrary,
   onExportNotebooks,
@@ -101,30 +95,6 @@ export default function NotebookToolbar({
           Add legacy canvas
         </button>
       )}
-
-      <button
-        type="button"
-        onClick={onToggleLegacyDrawingControls}
-        aria-pressed={showLegacyDrawingControls}
-        className={secondaryButtonClass}
-        title="Show or hide controls for adding legacy bitmap canvas cells"
-      >
-        Legacy canvas tools: {showLegacyDrawingControls ? "Shown" : "Hidden"}
-      </button>
-
-      <button
-        type="button"
-        onClick={onToggleTouchDrawing}
-        aria-pressed={isTouchDrawingEnabled}
-        className={`inline-flex h-10 items-center justify-center rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2 ${
-          isTouchDrawingEnabled
-            ? "border-sky-600 bg-sky-600 text-white hover:bg-sky-700"
-            : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-        }`}
-        title="When off, one-finger gestures scroll over drawing cells"
-      >
-        Touch drawing: {isTouchDrawingEnabled ? "On" : "Off"}
-      </button>
 
       <button
         type="button"
