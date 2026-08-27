@@ -3,7 +3,7 @@
 import { useAuth } from "@clerk/nextjs";
 import { upload } from "@vercel/blob/client";
 import { useEffect, useRef, useState } from "react";
-import Markdown from "react-markdown";
+import Markdown, { defaultUrlTransform } from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -15,6 +15,7 @@ import {
   MAX_IMAGE_SIZE_BYTES,
   sanitizeImageFilename,
 } from "@/lib/attachments";
+import { saveGuestImage } from "@/lib/client/guest-storage";
 import type {
   MarkdownInsertionRequest,
   TextCell,
@@ -30,6 +31,7 @@ interface TextCellEditorProps {
   markdownInsertion: MarkdownInsertionRequest | null;
   onChange: (content: string) => void;
   onFocusHandled: () => void;
+  storageMode: "cloud" | "local";
 }
 
 export default function TextCellEditor({
@@ -40,6 +42,7 @@ export default function TextCellEditor({
   markdownInsertion,
   onChange,
   onFocusHandled,
+  storageMode,
 }: TextCellEditorProps) {
   const { userId } = useAuth();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -164,7 +167,7 @@ export default function TextCellEditor({
   }
 
   async function insertImage(file: File) {
-    if (!userId) {
+    if (storageMode === "cloud" && !userId) {
       setUploadError("Sign in before uploading an image.");
       return;
     }
@@ -185,19 +188,25 @@ export default function TextCellEditor({
 
     try {
       const filename = sanitizeImageFilename(file.name);
-      const blob = await upload(
-        `users/${userId}/images/${cell.id}/${filename}`,
-        file,
-        {
-          access: "private",
-          handleUploadUrl: "/api/attachments/upload",
-          clientPayload: JSON.stringify({ cellId: cell.id }),
-          onUploadProgress: ({ percentage }) => {
-            setUploadProgress(Math.round(percentage));
+      let imageUrl: string;
+      if (storageMode === "local") {
+        imageUrl = (await saveGuestImage(file, filename, cell.id)).url;
+        setUploadProgress(100);
+      } else {
+        const blob = await upload(
+          `users/${userId}/images/${cell.id}/${filename}`,
+          file,
+          {
+            access: "private",
+            handleUploadUrl: "/api/attachments/upload",
+            clientPayload: JSON.stringify({ cellId: cell.id }),
+            onUploadProgress: ({ percentage }) => {
+              setUploadProgress(Math.round(percentage));
+            },
           },
-        },
-      );
-      const imageUrl = createPrivateImageUrl(blob.pathname);
+        );
+        imageUrl = createPrivateImageUrl(blob.pathname);
+      }
       const imageMarkdown = `![${createImageAltText(file.name)}](${imageUrl})`;
       const currentContent = latestContentRef.current;
       const insertionPosition = Math.min(
@@ -215,7 +224,9 @@ export default function TextCellEditor({
       onChange(nextContent);
     } catch {
       setUploadError(
-        "Could not upload the image. Confirm that private Vercel Blob storage is connected.",
+        storageMode === "local"
+          ? "Could not save the image in this browser. Check available site storage."
+          : "Could not upload the image. Confirm that private Vercel Blob storage is connected.",
       );
     } finally {
       setIsUploadingImage(false);
@@ -446,6 +457,12 @@ export default function TextCellEditor({
             <Markdown
               remarkPlugins={[remarkGfm, remarkMath]}
               rehypePlugins={[rehypeKatex]}
+              urlTransform={(url) =>
+                storageMode === "local" &&
+                /^data:image\/(?:jpeg|png|webp|gif);base64,/i.test(url)
+                  ? url
+                  : defaultUrlTransform(url)
+              }
             >
               {cell.content.trim() || "_Empty text cell_"}
             </Markdown>

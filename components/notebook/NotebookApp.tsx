@@ -14,6 +14,11 @@ import {
   restoreRemoteFolder,
 } from "@/lib/client/folder-api";
 import {
+  createGuestCloudTransfer,
+  guestWorkspaceHasContent,
+  loadGuestWorkspace,
+} from "@/lib/client/guest-storage";
+import {
   createRemoteCell,
   createRemoteNotebook,
   deleteRemoteCell,
@@ -953,6 +958,43 @@ export default function NotebookApp() {
         await reloadOrganization();
       } catch {
         window.alert("Could not load your notebook workspace.");
+        setIsLoadingNotebooks(false);
+        return;
+      }
+
+      try {
+        if (
+          window.sessionStorage.getItem("note-taking-app:guest-import-reviewed")
+        ) {
+          return;
+        }
+        const guestWorkspace = await loadGuestWorkspace();
+        if (!guestWorkspaceHasContent(guestWorkspace)) return;
+        const shouldImport = window.confirm(
+          "A workspace stored on this device was found. Import a copy into your account? Choose Cancel to keep the local and cloud workspaces separate.",
+        );
+        window.sessionStorage.setItem(
+          "note-taking-app:guest-import-reviewed",
+          "true",
+        );
+        if (!shouldImport) return;
+
+        const archive = await createGuestCloudTransfer(guestWorkspace);
+        const rootFolderId =
+          archive.manifest.attachments.length > 0
+            ? await importPortableWorkspace(archive, null)
+            : await importRemoteScopedWorkspace(archive.workspace, null);
+        await reloadOrganization();
+        if (rootFolderId) {
+          setSelectedLocation({ kind: "folder", folderId: rootFolderId });
+        }
+        window.alert(
+          "The local workspace was copied into your account. The original local copy remains on this device.",
+        );
+      } catch {
+        window.alert(
+          "Your cloud workspace loaded, but the local workspace could not be imported. The local copy is still safe on this device.",
+        );
       } finally {
         setIsLoadingNotebooks(false);
       }
@@ -1572,6 +1614,7 @@ export default function NotebookApp() {
           onImportNotebooks={importNotebooks}
           settings={settings}
           isDarkMode={isDarkMode}
+          storageMode="cloud"
         />
       ) : (
         <section className="flex min-w-0 flex-1 items-center justify-center bg-slate-50 px-6 py-12">

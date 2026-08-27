@@ -27,6 +27,7 @@ interface CellFrameProps {
   isTouchDrawingEnabled: boolean;
   showLegacyDrawingControls: boolean;
   isDarkMode: boolean;
+  storageMode: "cloud" | "local";
   onUpdateTextCell: (cellId: string, content: string) => void;
   onUpdateDrawingCell: (cellId: string, drawing: string | null) => void;
   onUpdateCellHeight: (cellId: string, heightPx: number) => void;
@@ -58,6 +59,7 @@ export default function CellFrame({
   isTouchDrawingEnabled,
   showLegacyDrawingControls,
   isDarkMode,
+  storageMode,
   onUpdateTextCell,
   onUpdateDrawingCell,
   onUpdateCellHeight,
@@ -235,6 +237,7 @@ export default function CellFrame({
           textSelection={textSelection}
           markdownInsertion={markdownInsertion}
           onFocusHandled={onFocusedCellHandled}
+          storageMode={storageMode}
         />
       ) : cell.type === "drawing" ? (
         <DrawingCellEditor
@@ -246,6 +249,7 @@ export default function CellFrame({
         <ExcalidrawCellEditor
           cell={cell}
           isDarkMode={isDarkMode}
+          storageMode={storageMode}
           imageInsertion={excalidrawImageInsertion}
           flushRef={excalidrawFlushRef}
           onChange={(drawing) => onUpdateDrawingCell(cell.id, drawing)}

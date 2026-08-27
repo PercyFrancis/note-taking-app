@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { primaryButtonClass } from "@/components/ui/buttonStyles";
+import {
+  primaryButtonClass,
+  secondaryButtonClass,
+} from "@/components/ui/buttonStyles";
 import type { AccentColor, ThemeMode, UserSettings } from "@/lib/types";
 
 type SettingsSection = "appearance" | "editor" | "shortcuts" | "data";
@@ -11,6 +14,13 @@ interface SettingsDialogProps {
   saveStatus: "idle" | "saving" | "saved" | "error";
   onChange: (settings: UserSettings) => void;
   onClose: () => void;
+  isLocalMode?: boolean;
+  localStorageInfo?: {
+    usage: number;
+    quota: number;
+    persisted: boolean;
+  } | null;
+  onRequestLocalPersistence?: () => void;
 }
 
 const SECTIONS: Array<{ id: SettingsSection; label: string }> = [
@@ -96,6 +106,9 @@ export default function SettingsDialog({
   saveStatus,
   onChange,
   onClose,
+  isLocalMode = false,
+  localStorageInfo,
+  onRequestLocalPersistence,
 }: SettingsDialogProps) {
   const [section, setSection] = useState<SettingsSection>("appearance");
 
@@ -278,6 +291,33 @@ export default function SettingsDialog({
               <div>
                 <h3 className="text-lg font-semibold">Data and portability</h3>
                 <div className="mt-5 space-y-4 text-sm text-slate-600">
+                  {isLocalMode && localStorageInfo && (
+                    <div className="rounded-lg border border-slate-200 p-4">
+                      <h4 className="font-medium text-slate-900">
+                        Browser storage
+                      </h4>
+                      <p className="mt-1">
+                        {formatStorageSize(localStorageInfo.usage)} used of
+                        approximately{" "}
+                        {formatStorageSize(localStorageInfo.quota)}.
+                      </p>
+                      <p className="mt-1">
+                        {localStorageInfo.persisted
+                          ? "The browser granted persistent storage."
+                          : "Storage is not persistent and may be cleared under disk pressure."}
+                      </p>
+                      {!localStorageInfo.persisted &&
+                        onRequestLocalPersistence && (
+                          <button
+                            type="button"
+                            className={`${secondaryButtonClass} mt-3`}
+                            onClick={onRequestLocalPersistence}
+                          >
+                            Request persistent storage
+                          </button>
+                        )}
+                    </div>
+                  )}
                   <div className="rounded-lg border border-slate-200 p-4">
                     <h4 className="font-medium text-slate-900">
                       Image library
@@ -311,7 +351,10 @@ export default function SettingsDialog({
           <footer className="flex items-center justify-between border-t border-slate-200 px-5 py-3">
             <p className="text-xs text-slate-500" aria-live="polite">
               {saveStatus === "saving" && "Saving…"}
-              {saveStatus === "saved" && "Saved to your account"}
+              {saveStatus === "saved" &&
+                (isLocalMode
+                  ? "Saved on this device"
+                  : "Saved to your account")}
               {saveStatus === "error" &&
                 "Could not sync; saved in this browser"}
             </p>
@@ -327,4 +370,12 @@ export default function SettingsDialog({
       </div>
     </div>
   );
+}
+
+function formatStorageSize(bytes: number) {
+  if (bytes < 1024 * 1024) return `${Math.max(0, bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }

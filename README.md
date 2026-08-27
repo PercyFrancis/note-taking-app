@@ -6,6 +6,14 @@
 - This app uses a PostgreSQL database for persistence.
   - Neon is the provider.
 
+## Local Guest Mode
+
+Signed-out visitors enter a complete browser-local workspace automatically. Local notebooks, nested folders, cells, Trash, settings, Excalidraw scenes, legacy canvases, and attachment metadata are stored in a versioned IndexedDB database. Images are stored as binary Blob records rather than in `localStorage`; text and Excalidraw cells retain renderable data references, and the image library can reuse, rename, trash, restore, and delete those local files without contacting Vercel.
+
+Guest changes save asynchronously after 250 ms. **Settings → Data** reports approximate browser usage and quota, shows whether persistent storage was granted, and lets the user request persistence. The app warns at 80% usage and on failed writes. Browser-local data is not a backup: clearing site data, using private browsing, or browser eviction can remove it, so the sidebar identifies local mode and recommends regular exports.
+
+The older `localstorage-version` branch is migrated automatically when its validated `note-taking-app:notebooks` value is present and IndexedDB has no current guest workspace. JSON and portable notebook/folder import and export work locally. When a user signs in with meaningful guest data present, the app offers to copy it into an **Imported local workspace** cloud folder or keep the local and cloud workspaces separate. Import uploads referenced local images into the account's private Blob storage, regenerates imported database IDs, and leaves the original device-local workspace untouched.
+
 ## Notebook Folders And Trash
 
 Notebooks use a filesystem-style organization model. Each notebook is stored either at the workspace root (**Unfiled**) or in one nested folder. The sidebar provides **All notes**, **Unfiled**, and **Trash** virtual locations alongside an expandable folder tree. Use a notebook or folder's drag handle to move it, or right-click it (or select its **…** button) and choose **Move to…** to open the searchable folder picker. Dropping a notebook between notebook rows reorders it, hovering over a collapsed folder while dragging expands it, and circular folder moves are rejected. The editor breadcrumb shows the active notebook's folder path.

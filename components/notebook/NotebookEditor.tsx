@@ -52,6 +52,7 @@ interface NotebookEditorProps {
   onImportNotebooks: (file: File) => void;
   settings: UserSettings;
   isDarkMode: boolean;
+  storageMode: "cloud" | "local";
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {
@@ -104,6 +105,7 @@ export default function NotebookEditor({
   onImportNotebooks,
   settings,
   isDarkMode,
+  storageMode,
 }: NotebookEditorProps) {
   const [isFindOpen, setIsFindOpen] = useState(false);
   const [isImageLibraryOpen, setIsImageLibraryOpen] = useState(false);
@@ -339,6 +341,7 @@ export default function NotebookEditor({
         isTouchDrawingEnabled={settings.touchDrawingEnabled}
         showLegacyDrawingControls={settings.legacyCanvasToolsVisible}
         isDarkMode={isDarkMode}
+        storageMode={storageMode}
         onUpdateTextCell={onUpdateTextCell}
         onUpdateDrawingCell={onUpdateDrawingCell}
         onUpdateCellHeight={onUpdateCellHeight}
@@ -359,6 +362,7 @@ export default function NotebookEditor({
       />
       {isImageLibraryOpen && (
         <ImageLibraryDialog
+          storageMode={storageMode}
           notebooks={notebooks}
           selectedTextCellId={
             notebook.cells.find((cell) => cell.id === selectedCellId)?.type ===

@@ -15,6 +15,13 @@ import {
   restoreUploadedImage,
   trashUploadedImage,
 } from "@/lib/client/attachment-api";
+import {
+  deleteGuestImage,
+  listGuestImages,
+  renameGuestImage,
+  restoreGuestImage,
+  trashGuestImage,
+} from "@/lib/client/guest-storage";
 import type { Notebook, UploadedImage } from "@/lib/types";
 
 const IMAGES_PER_PAGE = 18;
@@ -26,6 +33,7 @@ interface ImageLibraryDialogProps {
   onInsertIntoText: (cellId: string, markdown: string) => void;
   onInsertIntoDrawing: (cellId: string, image: UploadedImage) => void;
   onClose: () => void;
+  storageMode: "cloud" | "local";
 }
 
 function formatFileSize(size: number): string {
@@ -51,6 +59,7 @@ export default function ImageLibraryDialog({
   onInsertIntoText,
   onInsertIntoDrawing,
   onClose,
+  storageMode,
 }: ImageLibraryDialogProps) {
   const [images, setImages] = useState<UploadedImage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -79,7 +88,10 @@ export default function ImageLibraryDialog({
       try {
         setIsLoading(true);
         setLoadError("");
-        const result = await loadUploadedImages(libraryStatus);
+        const result =
+          storageMode === "local"
+            ? { images: await listGuestImages(libraryStatus), truncated: false }
+            : await loadUploadedImages(libraryStatus);
 
         if (!isCancelled) {
           setImages(result.images);
@@ -100,7 +112,7 @@ export default function ImageLibraryDialog({
     return () => {
       isCancelled = true;
     };
-  }, [libraryStatus]);
+  }, [libraryStatus, storageMode]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -175,7 +187,12 @@ export default function ImageLibraryDialog({
     setBusyImageId(image.id);
     setActionStatus("");
     try {
-      replaceImage(await renameUploadedImage(image.id, displayName));
+      const updatedImage =
+        storageMode === "local"
+          ? await renameGuestImage(image.id, displayName)
+          : await renameUploadedImage(image.id, displayName);
+      if (!updatedImage) throw new Error("Image not found");
+      replaceImage(updatedImage);
       setRenamingImageId(null);
       setActionStatus("Image renamed. Existing links were not changed.");
     } catch {
@@ -191,7 +208,8 @@ export default function ImageLibraryDialog({
     setBusyImageId(image.id);
     setActionStatus("");
     try {
-      await trashUploadedImage(image.id);
+      if (storageMode === "local") await trashGuestImage(image.id);
+      else await trashUploadedImage(image.id);
       setImages((currentImages) =>
         currentImages.filter((currentImage) => currentImage.id !== image.id),
       );
@@ -207,7 +225,8 @@ export default function ImageLibraryDialog({
     setBusyImageId(image.id);
     setActionStatus("");
     try {
-      await restoreUploadedImage(image.id);
+      if (storageMode === "local") await restoreGuestImage(image.id);
+      else await restoreUploadedImage(image.id);
       setImages((currentImages) =>
         currentImages.filter((currentImage) => currentImage.id !== image.id),
       );
@@ -231,7 +250,23 @@ export default function ImageLibraryDialog({
     setBusyImageId(image.id);
     setActionStatus("");
     try {
-      await permanentlyDeleteUploadedImage(image.id);
+      if (storageMode === "local") {
+        const isReferenced = notebooks.some((notebook) =>
+          notebook.cells.some((cell) => {
+            const value = cell.type === "text" ? cell.content : cell.drawing;
+            return value?.includes(image.url);
+          }),
+        );
+        if (isReferenced) {
+          setActionStatus(
+            "This image is still referenced by a notebook and cannot be permanently deleted.",
+          );
+          return;
+        }
+        await deleteGuestImage(image.id);
+      } else {
+        await permanentlyDeleteUploadedImage(image.id);
+      }
       setImages((currentImages) =>
         currentImages.filter((currentImage) => currentImage.id !== image.id),
       );

@@ -24,6 +24,7 @@ import {
   MAX_IMAGE_SIZE_BYTES,
   sanitizeImageFilename,
 } from "@/lib/attachments";
+import { saveGuestImage } from "@/lib/client/guest-storage";
 import type {
   ExcalidrawCell,
   ExcalidrawImageInsertionRequest,
@@ -74,6 +75,7 @@ interface ExcalidrawCellEditorProps {
   flushRef: { current: ExcalidrawSceneFlush | null };
   onChange: (drawing: string) => void;
   onImageInsertionHandled: (requestId: number) => void;
+  storageMode: "cloud" | "local";
 }
 
 const CONTENT_SAVE_DELAY_MS = 200;
@@ -193,6 +195,7 @@ export default function ExcalidrawCellEditor({
   flushRef,
   onChange,
   onImageInsertionHandled,
+  storageMode,
 }: ExcalidrawCellEditorProps) {
   const { userId } = useAuth();
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -368,7 +371,7 @@ export default function ExcalidrawCellEditor({
       const uploadPromise = (async () => {
         const currentUserId = userIdRef.current;
 
-        if (!currentUserId) {
+        if (storageMode === "cloud" && !currentUserId) {
           throw new Error("Sign in before adding an image.");
         }
 
@@ -388,6 +391,11 @@ export default function ExcalidrawCellEditor({
         const filename = sanitizeImageFilename(
           `pasted-image-${file.created}.${extension}`,
         );
+        if (storageMode === "local") {
+          await saveGuestImage(imageBlob, filename, cell.id, String(file.id));
+          return file;
+        }
+
         const blob = await upload(
           `users/${currentUserId}/images/${cell.id}/${filename}`,
           imageBlob,
@@ -419,7 +427,7 @@ export default function ExcalidrawCellEditor({
       hostedFilePromisesRef.current.set(cacheKey, uploadPromise);
       return uploadPromise;
     },
-    [cell.id],
+    [cell.id, storageMode],
   );
 
   const clearSaveTimers = useCallback(() => {

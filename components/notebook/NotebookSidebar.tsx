@@ -1,6 +1,6 @@
 "use client";
 
-import { UserButton } from "@clerk/nextjs";
+import { SignInButton, UserButton } from "@clerk/nextjs";
 import { DragDropProvider, useDraggable, useDroppable } from "@dnd-kit/react";
 import {
   type MouseEvent as ReactMouseEvent,
@@ -46,6 +46,7 @@ interface NotebookSidebarProps {
   onRestoreTrashItem: (item: TrashItem) => void;
   onPermanentlyDeleteTrashItem: (item: TrashItem) => void;
   onOpenSettings: () => void;
+  isGuest?: boolean;
 }
 
 type DragData = { kind: "notebook" | "folder"; itemId: string };
@@ -346,6 +347,7 @@ export default function NotebookSidebar({
   onRestoreTrashItem,
   onPermanentlyDeleteTrashItem,
   onOpenSettings,
+  isGuest = false,
 }: NotebookSidebarProps) {
   const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(
     () => new Set(),
@@ -584,9 +586,25 @@ export default function NotebookSidebar({
               >
                 ⚙
               </button>
-              <UserButton />
+              {isGuest ? (
+                <SignInButton mode="modal">
+                  <button
+                    type="button"
+                    className="rounded-md bg-sky-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-sky-700"
+                  >
+                    Sign in
+                  </button>
+                </SignInButton>
+              ) : (
+                <UserButton />
+              )}
             </div>
           </div>
+          {isGuest && (
+            <p className="mt-2 rounded-md bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">
+              Stored on this device — export a backup regularly.
+            </p>
+          )}
           <div className="mt-3 flex gap-2">
             <button
               type="button"

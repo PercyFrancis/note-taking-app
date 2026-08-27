@@ -20,6 +20,7 @@ interface CellListProps {
   isTouchDrawingEnabled: boolean;
   showLegacyDrawingControls: boolean;
   isDarkMode: boolean;
+  storageMode: "cloud" | "local";
   onUpdateTextCell: (cellId: string, content: string) => void;
   onUpdateDrawingCell: (cellId: string, drawing: string | null) => void;
   onUpdateCellHeight: (cellId: string, heightPx: number) => void;
@@ -51,6 +52,7 @@ export default function CellList({
   isTouchDrawingEnabled,
   showLegacyDrawingControls,
   isDarkMode,
+  storageMode,
   onUpdateTextCell,
   onUpdateDrawingCell,
   onUpdateCellHeight,
@@ -107,6 +109,7 @@ export default function CellList({
                 : null
             }
             isDarkMode={isDarkMode}
+            storageMode={storageMode}
             isTouchDrawingEnabled={isTouchDrawingEnabled}
             showLegacyDrawingControls={showLegacyDrawingControls}
             onUpdateTextCell={onUpdateTextCell}
