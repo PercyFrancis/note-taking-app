@@ -15,8 +15,10 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
   type ChangeEvent,
+  type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -416,6 +418,7 @@ export default function PdfEditorApp() {
   const [activePageWidth, setActivePageWidth] = useState(612);
   const [viewMode, setViewMode] = useState<"single" | "continuous">("single");
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [areThumbnailsOpen, setAreThumbnailsOpen] = useState(true);
   const [pdfSource, setPdfSource] = useState<string | Blob | null>(null);
   const [status, setStatus] = useState("Loading…");
   const [isBusy, setIsBusy] = useState(false);
@@ -424,8 +427,23 @@ export default function PdfEditorApp() {
   const zoomInputRef = useRef<HTMLInputElement>(null);
   const objectUrlRef = useRef<string | null>(null);
   const draftScenesRef = useRef(new Map<string, string>());
-  const mainRef = useRef<HTMLElement>(null);
+  const workspaceRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<HTMLElement>(null);
+  const pagesRef = useRef<HTMLDivElement>(null);
+  const activeTouchPointersRef = useRef(
+    new Map<number, { x: number; y: number }>(),
+  );
+  const pinchSessionRef = useRef<{
+    active: boolean;
+    initialDistance: number;
+    initialZoom: number;
+    targetZoom: number;
+  } | null>(null);
+  const suppressTouchUntilClearRef = useRef(false);
+  const pendingPinchZoomRef = useRef<number | null>(null);
+  const fullscreenReturnFocusRef = useRef<HTMLElement | null>(null);
+  const viewerScrollRef = useRef({ left: 0, top: 0 });
+  const wasWorkspaceFullscreenRef = useRef(false);
   const viewerResizeObserverRef = useRef<ResizeObserver | null>(null);
   const viewerWheelListenerRef = useRef<((event: WheelEvent) => void) | null>(
     null,
@@ -448,6 +466,21 @@ export default function PdfEditorApp() {
     ),
   );
   const effectivePdfZoom = zoomMode === "fit-width" ? fitWidthZoom : pdfZoom;
+
+  useLayoutEffect(() => {
+    const pendingZoom = pendingPinchZoomRef.current;
+    if (
+      pendingZoom === null ||
+      Math.abs(pendingZoom - effectivePdfZoom) > 0.001
+    )
+      return;
+    pendingPinchZoomRef.current = null;
+    if (pagesRef.current) {
+      pagesRef.current.style.transform = "";
+      pagesRef.current.style.transformOrigin = "";
+      pagesRef.current.style.willChange = "";
+    }
+  }, [effectivePdfZoom]);
 
   const observeViewer = useCallback((element: HTMLElement | null) => {
     if (viewerRef.current && viewerWheelListenerRef.current) {
@@ -479,7 +512,19 @@ export default function PdfEditorApp() {
 
   useEffect(() => {
     const updateFullscreenState = () => {
-      setIsFullscreen(document.fullscreenElement === mainRef.current);
+      const nextIsFullscreen =
+        document.fullscreenElement === workspaceRef.current;
+      const wasFullscreen = wasWorkspaceFullscreenRef.current;
+      wasWorkspaceFullscreenRef.current = nextIsFullscreen;
+      setIsFullscreen(nextIsFullscreen);
+
+      requestAnimationFrame(() => {
+        viewerRef.current?.scrollTo(viewerScrollRef.current);
+        if (wasFullscreen && !nextIsFullscreen) {
+          fullscreenReturnFocusRef.current?.focus({ preventScroll: true });
+          fullscreenReturnFocusRef.current = null;
+        }
+      });
     };
     document.addEventListener("fullscreenchange", updateFullscreenState);
     return () =>
@@ -487,10 +532,25 @@ export default function PdfEditorApp() {
   }, []);
 
   const toggleFullscreen = async () => {
-    if (document.fullscreenElement === mainRef.current) {
-      await document.exitFullscreen();
-    } else {
-      await mainRef.current?.requestFullscreen();
+    const workspace = workspaceRef.current;
+    if (!workspace) return;
+
+    try {
+      if (document.fullscreenElement === workspace) {
+        await document.exitFullscreen();
+      } else {
+        fullscreenReturnFocusRef.current =
+          document.activeElement instanceof HTMLElement
+            ? document.activeElement
+            : null;
+        viewerScrollRef.current = {
+          left: viewerRef.current?.scrollLeft ?? 0,
+          top: viewerRef.current?.scrollTop ?? 0,
+        };
+        await workspace.requestFullscreen();
+      }
+    } catch {
+      setStatus("Fullscreen is unavailable in this browser");
     }
   };
 
@@ -499,6 +559,114 @@ export default function PdfEditorApp() {
     setPdfZoom(
       Math.min(MAX_PDF_ZOOM, Math.max(MIN_PDF_ZOOM, effectivePdfZoom + change)),
     );
+  };
+
+  const stopExcalidrawTouchGesture = (
+    event: ReactPointerEvent<HTMLElement>,
+  ) => {
+    event.stopPropagation();
+    event.nativeEvent.stopImmediatePropagation();
+  };
+
+  const handlePdfPointerDownCapture = (
+    event: ReactPointerEvent<HTMLElement>,
+  ) => {
+    if (
+      event.pointerType !== "touch" ||
+      !pagesRef.current?.contains(event.target as Node)
+    )
+      return;
+
+    activeTouchPointersRef.current.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+    });
+    if (activeTouchPointersRef.current.size < 2) return;
+    if (suppressTouchUntilClearRef.current) {
+      stopExcalidrawTouchGesture(event);
+      return;
+    }
+
+    const [first, second] = Array.from(activeTouchPointersRef.current.values());
+    const initialDistance = Math.max(
+      1,
+      Math.hypot(second.x - first.x, second.y - first.y),
+    );
+
+    pinchSessionRef.current = {
+      active: true,
+      initialDistance,
+      initialZoom: effectivePdfZoom,
+      targetZoom: effectivePdfZoom,
+    };
+    suppressTouchUntilClearRef.current = true;
+
+    const pagesBounds = pagesRef.current.getBoundingClientRect();
+    pagesRef.current.style.transformOrigin = `${(first.x + second.x) / 2 - pagesBounds.left}px ${(first.y + second.y) / 2 - pagesBounds.top}px`;
+    pagesRef.current.style.willChange = "transform";
+    stopExcalidrawTouchGesture(event);
+  };
+
+  const handlePdfPointerMoveCapture = (
+    event: ReactPointerEvent<HTMLElement>,
+  ) => {
+    if (
+      event.pointerType !== "touch" ||
+      !activeTouchPointersRef.current.has(event.pointerId)
+    )
+      return;
+
+    activeTouchPointersRef.current.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+    });
+    if (!suppressTouchUntilClearRef.current) return;
+    stopExcalidrawTouchGesture(event);
+
+    const session = pinchSessionRef.current;
+    if (!session?.active || activeTouchPointersRef.current.size < 2) return;
+    const [first, second] = Array.from(activeTouchPointersRef.current.values());
+    const distance = Math.hypot(second.x - first.x, second.y - first.y);
+    session.targetZoom = Math.min(
+      MAX_PDF_ZOOM,
+      Math.max(
+        MIN_PDF_ZOOM,
+        session.initialZoom * (distance / session.initialDistance),
+      ),
+    );
+    if (pagesRef.current) {
+      pagesRef.current.style.transform = `scale(${session.targetZoom / session.initialZoom})`;
+    }
+  };
+
+  const handlePdfPointerEndCapture = (
+    event: ReactPointerEvent<HTMLElement>,
+  ) => {
+    if (
+      event.pointerType !== "touch" ||
+      !activeTouchPointersRef.current.has(event.pointerId)
+    )
+      return;
+
+    activeTouchPointersRef.current.delete(event.pointerId);
+    const session = pinchSessionRef.current;
+    if (session?.active && activeTouchPointersRef.current.size < 2) {
+      session.active = false;
+      if (Math.abs(session.targetZoom - session.initialZoom) > 0.001) {
+        pendingPinchZoomRef.current = session.targetZoom;
+        setZoomMode("custom");
+        setPdfZoom(session.targetZoom);
+      } else if (pagesRef.current) {
+        pagesRef.current.style.transform = "";
+        pagesRef.current.style.transformOrigin = "";
+        pagesRef.current.style.willChange = "";
+      }
+    }
+
+    if (activeTouchPointersRef.current.size === 0) {
+      suppressTouchUntilClearRef.current = false;
+      pinchSessionRef.current = null;
+    }
   };
 
   viewerWheelHandlerRef.current = (event) => {
@@ -957,10 +1125,7 @@ export default function PdfEditorApp() {
   };
 
   return (
-    <main
-      ref={mainRef}
-      className="flex h-dvh min-h-0 flex-col overflow-hidden bg-slate-100 text-slate-900"
-    >
+    <main className="flex h-dvh min-h-0 flex-col overflow-hidden bg-slate-100 text-slate-900">
       <input
         ref={fileInputRef}
         type="file"
@@ -1037,185 +1202,216 @@ export default function PdfEditorApp() {
             </div>
           </section>
         ) : (
-          <Document
-            className="flex h-full min-h-0 min-w-0 flex-1 overflow-hidden flex-col md:flex-row"
-            file={pdfSource}
-            loading={<div className="p-8">Loading PDF…</div>}
+          <div
+            ref={workspaceRef}
+            className="pdf-workspace flex h-full min-h-0 min-w-0 flex-1 overflow-hidden bg-slate-100"
           >
-            <aside className="min-h-0 w-full shrink-0 overflow-auto border-b border-slate-200 bg-slate-50 p-2 md:w-40 md:border-r md:border-b-0">
-              <div className="flex gap-2 md:flex-col">
-                {Array.from(
-                  { length: activeDocument.pageCount },
-                  (_, index) => index + 1,
-                ).map((number) => (
-                  <PdfThumbnail
-                    key={number}
-                    number={number}
-                    isActive={number === pageNumber}
-                    isAnnotated={Boolean(annotations[number])}
-                    onSelect={() => {
-                      setPageNumber(number);
-                      if (viewMode === "continuous") {
-                        requestAnimationFrame(() =>
-                          document
-                            .getElementById(`pdf-page-${number}`)
-                            ?.scrollIntoView({
-                              behavior: "smooth",
-                              block: "start",
-                            }),
-                        );
-                      }
-                    }}
-                  />
-                ))}
-              </div>
-            </aside>
-            <section
-              ref={observeViewer}
-              className="min-h-0 min-w-0 flex-1 overscroll-contain overflow-auto p-4"
+            <Document
+              className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:flex-row"
+              file={pdfSource}
+              loading={<div className="p-8">Loading PDF…</div>}
             >
-              <div className="sticky top-0 z-30 mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-sm">
-                <strong className="mr-auto truncate">
-                  {activeDocument.title}
-                </strong>
-                <button
-                  type="button"
-                  className={`rounded border px-2 py-1 text-xs ${zoomMode === "fit-width" ? "border-sky-500 bg-sky-50 text-sky-700" : "border-slate-300"}`}
-                  onClick={() => setZoomMode("fit-width")}
-                >
-                  Fit width
-                </button>
-                <div className="flex items-center rounded border border-slate-300">
-                  <button
-                    type="button"
-                    className="px-2 py-1 text-sm hover:bg-slate-100"
-                    onClick={() => changePdfZoom(-0.1)}
-                    aria-label="Zoom out"
-                  >
-                    −
-                  </button>
-                  {isEditingZoom ? (
-                    <label className="flex items-center border-x border-slate-300 bg-white px-1 text-xs">
-                      <span className="sr-only">Custom zoom percentage</span>
-                      <input
-                        ref={zoomInputRef}
-                        type="number"
-                        inputMode="decimal"
-                        min={MIN_PDF_ZOOM * 100}
-                        max={MAX_PDF_ZOOM * 100}
-                        step="1"
-                        value={zoomInput}
-                        onChange={(event) => setZoomInput(event.target.value)}
-                        onBlur={commitZoomInput}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") event.currentTarget.blur();
-                          if (event.key === "Escape") {
-                            setIsEditingZoom(false);
-                          }
-                        }}
-                        onWheel={(event) => event.currentTarget.blur()}
-                        className="w-12 bg-transparent py-1 text-right outline-none"
-                      />
-                      <span>%</span>
-                    </label>
-                  ) : (
-                    <button
-                      type="button"
-                      className="min-w-14 border-x border-slate-300 px-2 py-1 text-xs hover:bg-slate-100"
-                      onClick={startEditingZoom}
-                      title="Enter a custom zoom percentage"
-                    >
-                      {Math.round(effectivePdfZoom * 100)}%
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="px-2 py-1 text-sm hover:bg-slate-100"
-                    onClick={() => changePdfZoom(0.1)}
-                    aria-label="Zoom in"
-                  >
-                    +
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  className="rounded border px-2 py-1 text-sm"
-                  onClick={() =>
-                    setViewMode((current) =>
-                      current === "single" ? "continuous" : "single",
-                    )
-                  }
-                >
-                  {viewMode === "single" ? "Continuous scroll" : "Single page"}
-                </button>
-                <button
-                  type="button"
-                  className="rounded border px-2 py-1 text-sm"
-                  onClick={() => void toggleFullscreen()}
-                >
-                  {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-                </button>
-                <button
-                  type="button"
-                  className="rounded border px-2 py-1 text-sm"
-                  onClick={renameActive}
-                >
-                  Rename
-                </button>
-                <button
-                  type="button"
-                  disabled={isBusy}
-                  className="rounded border px-2 py-1 text-sm"
-                  onClick={exportEditable}
-                >
-                  Editable project
-                </button>
-                <button
-                  type="button"
-                  disabled={isBusy}
-                  className="rounded border px-2 py-1 text-sm"
-                  onClick={exportFlattened}
-                >
-                  Annotated PDF
-                </button>
-                <button
-                  type="button"
-                  className="rounded border border-red-200 px-2 py-1 text-sm text-red-700"
-                  onClick={deleteActive}
-                >
-                  Delete
-                </button>
-              </div>
-              <div className={viewMode === "continuous" ? "space-y-6" : ""}>
-                {(viewMode === "continuous"
-                  ? Array.from(
+              {areThumbnailsOpen && (
+                <aside className="min-h-0 w-full shrink-0 overflow-auto border-b border-slate-200 bg-slate-50 p-2 md:w-40 md:border-r md:border-b-0">
+                  <div className="flex gap-2 md:flex-col">
+                    {Array.from(
                       { length: activeDocument.pageCount },
                       (_, index) => index + 1,
-                    )
-                  : [pageNumber]
-                ).map((number) => (
-                  <PdfEditablePage
-                    key={`${activeDocument.id}:${number}:${viewMode}`}
-                    documentId={activeDocument.id}
-                    pageNumber={number}
-                    scene={annotations[number]?.scene}
-                    zoom={effectivePdfZoom}
-                    lazy={viewMode === "continuous"}
-                    onPageSizeChange={(width) => {
-                      if (number === pageNumber) setActivePageWidth(width);
-                    }}
-                    onDraftChange={(scene) => {
-                      draftScenesRef.current.set(
-                        `${activeDocument.id}:${number}`,
-                        scene,
-                      );
-                    }}
-                    onSave={(scene) => persistScene(number, scene)}
-                  />
-                ))}
-              </div>
-            </section>
-          </Document>
+                    ).map((number) => (
+                      <PdfThumbnail
+                        key={number}
+                        number={number}
+                        isActive={number === pageNumber}
+                        isAnnotated={Boolean(annotations[number])}
+                        onSelect={() => {
+                          setPageNumber(number);
+                          if (viewMode === "continuous") {
+                            requestAnimationFrame(() =>
+                              document
+                                .getElementById(`pdf-page-${number}`)
+                                ?.scrollIntoView({
+                                  behavior: "smooth",
+                                  block: "start",
+                                }),
+                            );
+                          }
+                        }}
+                      />
+                    ))}
+                  </div>
+                </aside>
+              )}
+              <section
+                ref={observeViewer}
+                className="min-h-0 min-w-0 flex-1 overscroll-contain overflow-auto p-4"
+                onScroll={(event) => {
+                  viewerScrollRef.current = {
+                    left: event.currentTarget.scrollLeft,
+                    top: event.currentTarget.scrollTop,
+                  };
+                }}
+                onPointerDownCapture={handlePdfPointerDownCapture}
+                onPointerMoveCapture={handlePdfPointerMoveCapture}
+                onPointerUpCapture={handlePdfPointerEndCapture}
+                onPointerCancelCapture={handlePdfPointerEndCapture}
+              >
+                <div className="sticky top-0 z-30 mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-sm">
+                  <strong className="mr-auto truncate">
+                    {activeDocument.title}
+                  </strong>
+                  <button
+                    type="button"
+                    className={`rounded border px-2 py-1 text-xs ${zoomMode === "fit-width" ? "border-sky-500 bg-sky-50 text-sky-700" : "border-slate-300"}`}
+                    onClick={() => setZoomMode("fit-width")}
+                  >
+                    Fit width
+                  </button>
+                  <div className="flex items-center rounded border border-slate-300">
+                    <button
+                      type="button"
+                      className="px-2 py-1 text-sm hover:bg-slate-100"
+                      onClick={() => changePdfZoom(-0.1)}
+                      aria-label="Zoom out"
+                    >
+                      −
+                    </button>
+                    {isEditingZoom ? (
+                      <label className="flex items-center border-x border-slate-300 bg-white px-1 text-xs">
+                        <span className="sr-only">Custom zoom percentage</span>
+                        <input
+                          ref={zoomInputRef}
+                          type="number"
+                          inputMode="decimal"
+                          min={MIN_PDF_ZOOM * 100}
+                          max={MAX_PDF_ZOOM * 100}
+                          step="1"
+                          value={zoomInput}
+                          onChange={(event) => setZoomInput(event.target.value)}
+                          onBlur={commitZoomInput}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter")
+                              event.currentTarget.blur();
+                            if (event.key === "Escape") {
+                              setIsEditingZoom(false);
+                            }
+                          }}
+                          onWheel={(event) => event.currentTarget.blur()}
+                          className="w-12 bg-transparent py-1 text-right outline-none"
+                        />
+                        <span>%</span>
+                      </label>
+                    ) : (
+                      <button
+                        type="button"
+                        className="min-w-14 border-x border-slate-300 px-2 py-1 text-xs hover:bg-slate-100"
+                        onClick={startEditingZoom}
+                        title="Enter a custom zoom percentage"
+                      >
+                        {Math.round(effectivePdfZoom * 100)}%
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="px-2 py-1 text-sm hover:bg-slate-100"
+                      onClick={() => changePdfZoom(0.1)}
+                      aria-label="Zoom in"
+                    >
+                      +
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    className="rounded border px-2 py-1 text-sm"
+                    onClick={() =>
+                      setViewMode((current) =>
+                        current === "single" ? "continuous" : "single",
+                      )
+                    }
+                  >
+                    {viewMode === "single"
+                      ? "Continuous scroll"
+                      : "Single page"}
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded border px-2 py-1 text-sm"
+                    aria-expanded={areThumbnailsOpen}
+                    onClick={() => setAreThumbnailsOpen((current) => !current)}
+                  >
+                    {areThumbnailsOpen ? "Hide pages" : "Show pages"}
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded border px-2 py-1 text-sm"
+                    onClick={() => void toggleFullscreen()}
+                  >
+                    {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded border px-2 py-1 text-sm"
+                    onClick={renameActive}
+                  >
+                    Rename
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isBusy}
+                    className="rounded border px-2 py-1 text-sm"
+                    onClick={exportEditable}
+                  >
+                    Editable project
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isBusy}
+                    className="rounded border px-2 py-1 text-sm"
+                    onClick={exportFlattened}
+                  >
+                    Annotated PDF
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded border border-red-200 px-2 py-1 text-sm text-red-700"
+                    onClick={deleteActive}
+                  >
+                    Delete
+                  </button>
+                </div>
+                <div
+                  ref={pagesRef}
+                  className={viewMode === "continuous" ? "space-y-6" : ""}
+                >
+                  {(viewMode === "continuous"
+                    ? Array.from(
+                        { length: activeDocument.pageCount },
+                        (_, index) => index + 1,
+                      )
+                    : [pageNumber]
+                  ).map((number) => (
+                    <PdfEditablePage
+                      key={`${activeDocument.id}:${number}:${viewMode}`}
+                      documentId={activeDocument.id}
+                      pageNumber={number}
+                      scene={annotations[number]?.scene}
+                      zoom={effectivePdfZoom}
+                      lazy={viewMode === "continuous"}
+                      onPageSizeChange={(width) => {
+                        if (number === pageNumber) setActivePageWidth(width);
+                      }}
+                      onDraftChange={(scene) => {
+                        draftScenesRef.current.set(
+                          `${activeDocument.id}:${number}`,
+                          scene,
+                        );
+                      }}
+                      onSave={(scene) => persistScene(number, scene)}
+                    />
+                  ))}
+                </div>
+              </section>
+            </Document>
+          </div>
         )}
       </div>
     </main>

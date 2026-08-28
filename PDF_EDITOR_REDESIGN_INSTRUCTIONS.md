@@ -123,6 +123,14 @@ Acceptance checks:
   - The temporary viewer scale is removed before scene persistence, so it does not change saved or exported annotation coordinates.
   - The PDF workspace is constrained to the dynamic browser viewport and owns its scrolling, preventing simultaneous page-level and viewer-level scrolling.
   - A non-passive wheel capture isolates ordinary scrolling from `Ctrl/Cmd + wheel` PDF zoom and prevents browser/Excalidraw zoom leakage.
+  - Two-finger touch gestures are intercepted before Excalidraw can apply its private canvas zoom. A temporary whole-page preview follows the pinch, then commits one bounded PDF zoom when the gesture ends while keeping annotation coordinates canonical.
   - Selecting the displayed zoom percentage opens a focused numeric field for custom values from 25% through 300%.
-- **Verification required:** Physically test pointer/stroke alignment, wheel isolation, and viewport sizing at several zoom levels. Automated browser interaction was unavailable during implementation.
-- **Pending:** Stages 2–6. Begin Stage 2 only after Stage 1 pointer verification.
+- **Implemented; awaiting physical verification:** Stage 2 — Dedicated PDF workspace and fullscreen.
+  - Fullscreen targets a bounded workspace containing the page-thumbnail rail, PDF viewer, viewer controls, and annotation surfaces.
+  - The application header and PDF document library remain outside fullscreen.
+  - The page-thumbnail rail can be collapsed and restored from the viewer controls, including while fullscreen.
+  - Entering and exiting fullscreen preserve the latest viewer scroll position. Exiting returns keyboard focus to the control that opened fullscreen.
+  - Fullscreen state follows the browser Fullscreen API, so pressing `Escape` restores the normal workspace and control label.
+  - Fullscreen failures are handled without leaving the controls in an incorrect state.
+- **Verification required:** Physically test pointer/stroke alignment, wheel isolation, viewport sizing, workspace-only fullscreen, `Escape`, thumbnail collapsing, focus restoration, and scroll restoration.
+- **Pending:** Stages 3–6. Begin Stage 3 only after Stage 2 fullscreen verification.
