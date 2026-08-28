@@ -8,6 +8,7 @@ import type { OrderedExcalidrawElement } from "@excalidraw/excalidraw/element/ty
 import type {
   AppState,
   BinaryFiles,
+  ExcalidrawImperativeAPI,
   ExcalidrawInitialDataState,
 } from "@excalidraw/excalidraw/types";
 import { upload } from "@vercel/blob/client";
@@ -24,6 +25,12 @@ import {
   useState,
 } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
+import {
+  DEFAULT_PDF_ANNOTATION_TOOLBAR_STATE,
+  PdfAnnotationToolbar,
+  type PdfAnnotationToolbarState,
+  type PdfToolbarDock,
+} from "@/components/pdf/PdfAnnotationToolbar";
 import {
   createGuestPdfDocument,
   deleteGuestPdfDocument,
@@ -81,7 +88,7 @@ interface EditableProject {
 const SAVE_DELAY_MS = 750;
 const MULTIPART_UPLOAD_THRESHOLD_BYTES = 4 * 1024 * 1024;
 const EXPORT_PADDING_PX = 8;
-const ANNOTATION_TOOLBAR_GUTTER_PX = 64;
+const ANNOTATION_TOOLBAR_GUTTER_PX = 32;
 const MIN_PDF_ZOOM = 0.25;
 const MAX_PDF_ZOOM = 3;
 
@@ -113,6 +120,7 @@ function downloadBlob(blob: Blob, filename: string) {
 function annotationInitialData(
   scene: StoredPdfScene | null,
   viewerZoom: number,
+  toolbarState: PdfAnnotationToolbarState,
 ): ExcalidrawInitialDataState {
   const canonicalZoom =
     scene?.appState.zoom ?? ({ value: 1 } as AppState["zoom"]);
@@ -125,8 +133,112 @@ function annotationInitialData(
         ...canonicalZoom,
         value: (canonicalZoom.value * viewerZoom) as AppState["zoom"]["value"],
       },
+      currentItemStrokeColor: toolbarState.strokeColor,
+      currentItemBackgroundColor: toolbarState.backgroundColor,
+      currentItemFillStyle: toolbarState.fillStyle,
+      currentItemStrokeWidth: toolbarState.strokeWidth,
+      currentItemStrokeStyle: toolbarState.strokeStyle,
+      currentItemRoughness: toolbarState.roughness,
       viewBackgroundColor: "transparent",
     },
+  };
+}
+
+const PDF_ANNOTATION_TOOLS = new Set<PdfAnnotationToolbarState["tool"]>([
+  "selection",
+  "rectangle",
+  "ellipse",
+  "diamond",
+  "arrow",
+  "line",
+  "freedraw",
+  "text",
+  "eraser",
+]);
+
+function applyPdfToolbarState(
+  api: ExcalidrawImperativeAPI,
+  toolbarState: PdfAnnotationToolbarState,
+) {
+  api.setActiveTool({ type: toolbarState.tool });
+  api.updateScene({
+    appState: {
+      currentItemStrokeColor: toolbarState.strokeColor,
+      currentItemBackgroundColor: toolbarState.backgroundColor,
+      currentItemFillStyle: toolbarState.fillStyle,
+      currentItemStrokeWidth: toolbarState.strokeWidth,
+      currentItemStrokeStyle: toolbarState.strokeStyle,
+      currentItemRoughness: toolbarState.roughness,
+    },
+    captureUpdate: "NEVER",
+  });
+}
+
+function applyPdfToolbarChangeToSelection(
+  api: ExcalidrawImperativeAPI,
+  change: Partial<PdfAnnotationToolbarState>,
+) {
+  const selectedElementIds = api.getAppState().selectedElementIds;
+  if (!Object.keys(selectedElementIds).length) return;
+  const hasStyleChange =
+    change.strokeColor !== undefined ||
+    change.backgroundColor !== undefined ||
+    change.fillStyle !== undefined ||
+    change.strokeWidth !== undefined ||
+    change.strokeStyle !== undefined ||
+    change.roughness !== undefined;
+  if (!hasStyleChange) return;
+
+  const updatedAt = Date.now();
+  const elements = api.getSceneElementsIncludingDeleted().map((element) => {
+    if (!selectedElementIds[element.id]) return element;
+    return {
+      ...element,
+      ...(change.strokeColor !== undefined
+        ? { strokeColor: change.strokeColor }
+        : {}),
+      ...(change.backgroundColor !== undefined
+        ? { backgroundColor: change.backgroundColor }
+        : {}),
+      ...(change.fillStyle !== undefined
+        ? { fillStyle: change.fillStyle }
+        : {}),
+      ...(change.strokeWidth !== undefined
+        ? { strokeWidth: change.strokeWidth }
+        : {}),
+      ...(change.strokeStyle !== undefined
+        ? { strokeStyle: change.strokeStyle }
+        : {}),
+      ...(change.roughness !== undefined
+        ? { roughness: change.roughness }
+        : {}),
+      version: element.version + 1,
+      versionNonce: Math.floor(Math.random() * 2 ** 31),
+      updated: updatedAt,
+    } as OrderedExcalidrawElement;
+  });
+  api.updateScene({ elements, captureUpdate: "IMMEDIATELY" });
+}
+
+function toolbarStateFromAppState(
+  appState: AppState,
+  fallback: PdfAnnotationToolbarState,
+): PdfAnnotationToolbarState {
+  const tool = PDF_ANNOTATION_TOOLS.has(
+    appState.activeTool.type as PdfAnnotationToolbarState["tool"],
+  )
+    ? (appState.activeTool.type as PdfAnnotationToolbarState["tool"])
+    : fallback.tool;
+  return {
+    tool,
+    strokeColor: appState.currentItemStrokeColor,
+    backgroundColor: appState.currentItemBackgroundColor,
+    fillStyle:
+      appState.currentItemFillStyle as PdfAnnotationToolbarState["fillStyle"],
+    strokeWidth: appState.currentItemStrokeWidth as 1 | 2 | 4,
+    strokeStyle:
+      appState.currentItemStrokeStyle as PdfAnnotationToolbarState["strokeStyle"],
+    roughness: appState.currentItemRoughness as 0 | 1 | 2,
   };
 }
 
@@ -135,21 +247,36 @@ function PdfAnnotationCanvas({
   width,
   height,
   viewerZoom,
+  toolbarState,
   onDraftChange,
   onSave,
+  onToolbarStateChange,
+  onEditorReady,
 }: {
   scene: string | undefined;
   width: number;
   height: number;
   viewerZoom: number;
+  toolbarState: PdfAnnotationToolbarState;
   onDraftChange: (scene: string) => void;
   onSave: (scene: string) => Promise<void>;
+  onToolbarStateChange: (state: PdfAnnotationToolbarState) => void;
+  onEditorReady: (
+    api: ExcalidrawImperativeAPI | null,
+    element: HTMLDivElement | null,
+  ) => void;
 }) {
+  const layerRef = useRef<HTMLDivElement>(null);
+  const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const latestRef = useRef(scene ?? "");
   const initialSceneRef = useRef(scene);
   const committedRef = useRef(scene ?? "");
   const onSaveRef = useRef(onSave);
   const onDraftChangeRef = useRef(onDraftChange);
+  const onToolbarStateChangeRef = useRef(onToolbarStateChange);
+  const onEditorReadyRef = useRef(onEditorReady);
+  const toolbarStateRef = useRef(toolbarState);
+  const toolbarSignatureRef = useRef(JSON.stringify(toolbarState));
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSaveRef = useRef<string | null>(null);
   const isSavingRef = useRef(false);
@@ -161,11 +288,30 @@ function PdfAnnotationCanvas({
       annotationInitialData(
         parseScene(latestRef.current || initialSceneRef.current),
         viewerZoom,
+        toolbarStateRef.current,
       ),
     [viewerZoom],
   );
   onSaveRef.current = onSave;
   onDraftChangeRef.current = onDraftChange;
+  onToolbarStateChangeRef.current = onToolbarStateChange;
+  onEditorReadyRef.current = onEditorReady;
+  toolbarStateRef.current = toolbarState;
+  toolbarSignatureRef.current = JSON.stringify(toolbarState);
+
+  useEffect(() => {
+    const api = apiRef.current;
+    if (api) applyPdfToolbarState(api, toolbarState);
+  }, [toolbarState]);
+
+  const handleExcalidrawApi = useCallback((api: ExcalidrawImperativeAPI) => {
+    apiRef.current = api;
+    requestAnimationFrame(() => {
+      if (apiRef.current !== api) return;
+      applyPdfToolbarState(api, toolbarStateRef.current);
+      onEditorReadyRef.current(api, layerRef.current);
+    });
+  }, []);
 
   const queueSave = useCallback((next: string) => {
     committedRef.current = next;
@@ -188,6 +334,7 @@ function PdfAnnotationCanvas({
 
   useEffect(() => {
     return () => {
+      onEditorReadyRef.current(null, null);
       if (timerRef.current) clearTimeout(timerRef.current);
       if (latestRef.current && latestRef.current !== committedRef.current) {
         queueSave(latestRef.current);
@@ -197,12 +344,14 @@ function PdfAnnotationCanvas({
 
   return (
     <div
+      ref={layerRef}
       className="pdf-annotation-layer absolute inset-0 z-10"
       style={{ width, height }}
     >
       <Excalidraw
         key={`viewer-zoom-${viewerZoom}`}
         initialData={initialData}
+        excalidrawAPI={handleExcalidrawApi}
         UIOptions={{
           tools: { image: false },
           canvasActions: {
@@ -212,6 +361,17 @@ function PdfAnnotationCanvas({
           },
         }}
         onChange={(elements, appState, files) => {
+          const nextToolbarState = toolbarStateFromAppState(
+            appState,
+            toolbarStateRef.current,
+          );
+          const nextToolbarSignature = JSON.stringify(nextToolbarState);
+          if (nextToolbarSignature !== toolbarSignatureRef.current) {
+            toolbarSignatureRef.current = nextToolbarSignature;
+            queueMicrotask(() =>
+              onToolbarStateChangeRef.current(nextToolbarState),
+            );
+          }
           const next = JSON.stringify({
             version: 1,
             source: "pdf-annotation",
@@ -308,18 +468,27 @@ function PdfEditablePage({
   scene,
   zoom,
   lazy,
+  toolbarState,
   onPageSizeChange,
   onDraftChange,
   onSave,
+  onToolbarStateChange,
+  onEditorReady,
 }: {
   documentId: string;
   pageNumber: number;
   scene: string | undefined;
   zoom: number;
   lazy: boolean;
+  toolbarState: PdfAnnotationToolbarState;
   onPageSizeChange?: (width: number, height: number) => void;
   onDraftChange: (scene: string) => void;
   onSave: (scene: string) => Promise<void>;
+  onToolbarStateChange: (state: PdfAnnotationToolbarState) => void;
+  onEditorReady: (
+    api: ExcalidrawImperativeAPI | null,
+    element: HTMLDivElement | null,
+  ) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [shouldRender, setShouldRender] = useState(!lazy);
@@ -386,8 +555,11 @@ function PdfEditablePage({
                 width={pageSize.width * zoom}
                 height={pageSize.height * zoom}
                 viewerZoom={zoom}
+                toolbarState={toolbarState}
                 onDraftChange={onDraftChange}
                 onSave={onSave}
+                onToolbarStateChange={onToolbarStateChange}
+                onEditorReady={onEditorReady}
               />
             </>
           ) : (
@@ -419,6 +591,10 @@ export default function PdfEditorApp() {
   const [viewMode, setViewMode] = useState<"single" | "continuous">("single");
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [areThumbnailsOpen, setAreThumbnailsOpen] = useState(true);
+  const [annotationToolbar, setAnnotationToolbar] =
+    useState<PdfAnnotationToolbarState>(DEFAULT_PDF_ANNOTATION_TOOLBAR_STATE);
+  const [annotationToolbarDock, setAnnotationToolbarDock] =
+    useState<PdfToolbarDock>("top");
   const [pdfSource, setPdfSource] = useState<string | Blob | null>(null);
   const [status, setStatus] = useState("Loading…");
   const [isBusy, setIsBusy] = useState(false);
@@ -441,6 +617,12 @@ export default function PdfEditorApp() {
   } | null>(null);
   const suppressTouchUntilClearRef = useRef(false);
   const pendingPinchZoomRef = useRef<number | null>(null);
+  const annotationEditorsRef = useRef(
+    new Map<
+      number,
+      { api: ExcalidrawImperativeAPI; element: HTMLDivElement }
+    >(),
+  );
   const fullscreenReturnFocusRef = useRef<HTMLElement | null>(null);
   const viewerScrollRef = useRef({ left: 0, top: 0 });
   const wasWorkspaceFullscreenRef = useRef(false);
@@ -690,6 +872,41 @@ export default function PdfEditorApp() {
       setZoomMode("custom");
     }
     setIsEditingZoom(false);
+  };
+
+  const runActivePageHistory = (redo: boolean) => {
+    const editor = annotationEditorsRef.current.get(pageNumber);
+    if (!editor) {
+      setStatus(`Page ${pageNumber} is not ready`);
+      return;
+    }
+
+    const target =
+      editor.element.querySelector<HTMLElement>(".excalidraw") ??
+      editor.element;
+    target.focus({ preventScroll: true });
+    const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+    target.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "z",
+        code: "KeyZ",
+        ctrlKey: !isMac,
+        metaKey: isMac,
+        shiftKey: redo,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  };
+
+  const changeAnnotationToolbar = (
+    change: Partial<PdfAnnotationToolbarState>,
+  ) => {
+    setAnnotationToolbar((current) => ({ ...current, ...change }));
+    const editor = annotationEditorsRef.current.get(pageNumber);
+    if (!editor) return;
+    if (change.tool) editor.api.setActiveTool({ type: change.tool });
+    applyPdfToolbarChangeToSelection(editor.api, change);
   };
 
   const reloadDocuments = useCallback(async () => {
@@ -1241,175 +1458,226 @@ export default function PdfEditorApp() {
                   </div>
                 </aside>
               )}
-              <section
-                ref={observeViewer}
-                className="min-h-0 min-w-0 flex-1 overscroll-contain overflow-auto p-4"
-                onScroll={(event) => {
-                  viewerScrollRef.current = {
-                    left: event.currentTarget.scrollLeft,
-                    top: event.currentTarget.scrollTop,
-                  };
-                }}
-                onPointerDownCapture={handlePdfPointerDownCapture}
-                onPointerMoveCapture={handlePdfPointerMoveCapture}
-                onPointerUpCapture={handlePdfPointerEndCapture}
-                onPointerCancelCapture={handlePdfPointerEndCapture}
+              <div
+                className={`flex min-h-0 min-w-0 flex-1 overflow-hidden ${
+                  annotationToolbarDock === "top" ||
+                  annotationToolbarDock === "bottom"
+                    ? "flex-col"
+                    : "flex-row"
+                }`}
               >
-                <div className="sticky top-0 z-30 mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-sm">
-                  <strong className="mr-auto truncate">
-                    {activeDocument.title}
-                  </strong>
-                  <button
-                    type="button"
-                    className={`rounded border px-2 py-1 text-xs ${zoomMode === "fit-width" ? "border-sky-500 bg-sky-50 text-sky-700" : "border-slate-300"}`}
-                    onClick={() => setZoomMode("fit-width")}
-                  >
-                    Fit width
-                  </button>
-                  <div className="flex items-center rounded border border-slate-300">
+                {(annotationToolbarDock === "top" ||
+                  annotationToolbarDock === "left") && (
+                  <PdfAnnotationToolbar
+                    state={annotationToolbar}
+                    dock={annotationToolbarDock}
+                    activePage={pageNumber}
+                    onChange={changeAnnotationToolbar}
+                    onDockChange={setAnnotationToolbarDock}
+                    onUndo={() => runActivePageHistory(false)}
+                    onRedo={() => runActivePageHistory(true)}
+                  />
+                )}
+                <section
+                  ref={observeViewer}
+                  className="min-h-0 min-w-0 flex-1 overscroll-contain overflow-auto p-4"
+                  onScroll={(event) => {
+                    viewerScrollRef.current = {
+                      left: event.currentTarget.scrollLeft,
+                      top: event.currentTarget.scrollTop,
+                    };
+                  }}
+                  onPointerDownCapture={handlePdfPointerDownCapture}
+                  onPointerMoveCapture={handlePdfPointerMoveCapture}
+                  onPointerUpCapture={handlePdfPointerEndCapture}
+                  onPointerCancelCapture={handlePdfPointerEndCapture}
+                >
+                  <div className="sticky top-0 z-30 mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-sm">
+                    <strong className="mr-auto truncate">
+                      {activeDocument.title}
+                    </strong>
                     <button
                       type="button"
-                      className="px-2 py-1 text-sm hover:bg-slate-100"
-                      onClick={() => changePdfZoom(-0.1)}
-                      aria-label="Zoom out"
+                      className={`rounded border px-2 py-1 text-xs ${zoomMode === "fit-width" ? "border-sky-500 bg-sky-50 text-sky-700" : "border-slate-300"}`}
+                      onClick={() => setZoomMode("fit-width")}
                     >
-                      −
+                      Fit width
                     </button>
-                    {isEditingZoom ? (
-                      <label className="flex items-center border-x border-slate-300 bg-white px-1 text-xs">
-                        <span className="sr-only">Custom zoom percentage</span>
-                        <input
-                          ref={zoomInputRef}
-                          type="number"
-                          inputMode="decimal"
-                          min={MIN_PDF_ZOOM * 100}
-                          max={MAX_PDF_ZOOM * 100}
-                          step="1"
-                          value={zoomInput}
-                          onChange={(event) => setZoomInput(event.target.value)}
-                          onBlur={commitZoomInput}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter")
-                              event.currentTarget.blur();
-                            if (event.key === "Escape") {
-                              setIsEditingZoom(false);
-                            }
-                          }}
-                          onWheel={(event) => event.currentTarget.blur()}
-                          className="w-12 bg-transparent py-1 text-right outline-none"
-                        />
-                        <span>%</span>
-                      </label>
-                    ) : (
+                    <div className="flex items-center rounded border border-slate-300">
                       <button
                         type="button"
-                        className="min-w-14 border-x border-slate-300 px-2 py-1 text-xs hover:bg-slate-100"
-                        onClick={startEditingZoom}
-                        title="Enter a custom zoom percentage"
+                        className="px-2 py-1 text-sm hover:bg-slate-100"
+                        onClick={() => changePdfZoom(-0.1)}
+                        aria-label="Zoom out"
                       >
-                        {Math.round(effectivePdfZoom * 100)}%
+                        −
                       </button>
-                    )}
+                      {isEditingZoom ? (
+                        <label className="flex items-center border-x border-slate-300 bg-white px-1 text-xs">
+                          <span className="sr-only">
+                            Custom zoom percentage
+                          </span>
+                          <input
+                            ref={zoomInputRef}
+                            type="number"
+                            inputMode="decimal"
+                            min={MIN_PDF_ZOOM * 100}
+                            max={MAX_PDF_ZOOM * 100}
+                            step="1"
+                            value={zoomInput}
+                            onChange={(event) =>
+                              setZoomInput(event.target.value)
+                            }
+                            onBlur={commitZoomInput}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter")
+                                event.currentTarget.blur();
+                              if (event.key === "Escape") {
+                                setIsEditingZoom(false);
+                              }
+                            }}
+                            onWheel={(event) => event.currentTarget.blur()}
+                            className="w-12 bg-transparent py-1 text-right outline-none"
+                          />
+                          <span>%</span>
+                        </label>
+                      ) : (
+                        <button
+                          type="button"
+                          className="min-w-14 border-x border-slate-300 px-2 py-1 text-xs hover:bg-slate-100"
+                          onClick={startEditingZoom}
+                          title="Enter a custom zoom percentage"
+                        >
+                          {Math.round(effectivePdfZoom * 100)}%
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="px-2 py-1 text-sm hover:bg-slate-100"
+                        onClick={() => changePdfZoom(0.1)}
+                        aria-label="Zoom in"
+                      >
+                        +
+                      </button>
+                    </div>
                     <button
                       type="button"
-                      className="px-2 py-1 text-sm hover:bg-slate-100"
-                      onClick={() => changePdfZoom(0.1)}
-                      aria-label="Zoom in"
+                      className="rounded border px-2 py-1 text-sm"
+                      onClick={() =>
+                        setViewMode((current) =>
+                          current === "single" ? "continuous" : "single",
+                        )
+                      }
                     >
-                      +
+                      {viewMode === "single"
+                        ? "Continuous scroll"
+                        : "Single page"}
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded border px-2 py-1 text-sm"
+                      aria-expanded={areThumbnailsOpen}
+                      onClick={() =>
+                        setAreThumbnailsOpen((current) => !current)
+                      }
+                    >
+                      {areThumbnailsOpen ? "Hide pages" : "Show pages"}
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded border px-2 py-1 text-sm"
+                      onClick={() => void toggleFullscreen()}
+                    >
+                      {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded border px-2 py-1 text-sm"
+                      onClick={renameActive}
+                    >
+                      Rename
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      className="rounded border px-2 py-1 text-sm"
+                      onClick={exportEditable}
+                    >
+                      Editable project
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      className="rounded border px-2 py-1 text-sm"
+                      onClick={exportFlattened}
+                    >
+                      Annotated PDF
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded border border-red-200 px-2 py-1 text-sm text-red-700"
+                      onClick={deleteActive}
+                    >
+                      Delete
                     </button>
                   </div>
-                  <button
-                    type="button"
-                    className="rounded border px-2 py-1 text-sm"
-                    onClick={() =>
-                      setViewMode((current) =>
-                        current === "single" ? "continuous" : "single",
-                      )
-                    }
+                  <div
+                    ref={pagesRef}
+                    className={viewMode === "continuous" ? "space-y-6" : ""}
                   >
-                    {viewMode === "single"
-                      ? "Continuous scroll"
-                      : "Single page"}
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded border px-2 py-1 text-sm"
-                    aria-expanded={areThumbnailsOpen}
-                    onClick={() => setAreThumbnailsOpen((current) => !current)}
-                  >
-                    {areThumbnailsOpen ? "Hide pages" : "Show pages"}
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded border px-2 py-1 text-sm"
-                    onClick={() => void toggleFullscreen()}
-                  >
-                    {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded border px-2 py-1 text-sm"
-                    onClick={renameActive}
-                  >
-                    Rename
-                  </button>
-                  <button
-                    type="button"
-                    disabled={isBusy}
-                    className="rounded border px-2 py-1 text-sm"
-                    onClick={exportEditable}
-                  >
-                    Editable project
-                  </button>
-                  <button
-                    type="button"
-                    disabled={isBusy}
-                    className="rounded border px-2 py-1 text-sm"
-                    onClick={exportFlattened}
-                  >
-                    Annotated PDF
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded border border-red-200 px-2 py-1 text-sm text-red-700"
-                    onClick={deleteActive}
-                  >
-                    Delete
-                  </button>
-                </div>
-                <div
-                  ref={pagesRef}
-                  className={viewMode === "continuous" ? "space-y-6" : ""}
-                >
-                  {(viewMode === "continuous"
-                    ? Array.from(
-                        { length: activeDocument.pageCount },
-                        (_, index) => index + 1,
-                      )
-                    : [pageNumber]
-                  ).map((number) => (
-                    <PdfEditablePage
-                      key={`${activeDocument.id}:${number}:${viewMode}`}
-                      documentId={activeDocument.id}
-                      pageNumber={number}
-                      scene={annotations[number]?.scene}
-                      zoom={effectivePdfZoom}
-                      lazy={viewMode === "continuous"}
-                      onPageSizeChange={(width) => {
-                        if (number === pageNumber) setActivePageWidth(width);
-                      }}
-                      onDraftChange={(scene) => {
-                        draftScenesRef.current.set(
-                          `${activeDocument.id}:${number}`,
-                          scene,
-                        );
-                      }}
-                      onSave={(scene) => persistScene(number, scene)}
-                    />
-                  ))}
-                </div>
-              </section>
+                    {(viewMode === "continuous"
+                      ? Array.from(
+                          { length: activeDocument.pageCount },
+                          (_, index) => index + 1,
+                        )
+                      : [pageNumber]
+                    ).map((number) => (
+                      <PdfEditablePage
+                        key={`${activeDocument.id}:${number}:${viewMode}`}
+                        documentId={activeDocument.id}
+                        pageNumber={number}
+                        scene={annotations[number]?.scene}
+                        zoom={effectivePdfZoom}
+                        lazy={viewMode === "continuous"}
+                        toolbarState={annotationToolbar}
+                        onPageSizeChange={(width) => {
+                          if (number === pageNumber) setActivePageWidth(width);
+                        }}
+                        onDraftChange={(scene) => {
+                          draftScenesRef.current.set(
+                            `${activeDocument.id}:${number}`,
+                            scene,
+                          );
+                        }}
+                        onSave={(scene) => persistScene(number, scene)}
+                        onToolbarStateChange={setAnnotationToolbar}
+                        onEditorReady={(api, element) => {
+                          if (api && element) {
+                            annotationEditorsRef.current.set(number, {
+                              api,
+                              element,
+                            });
+                          } else {
+                            annotationEditorsRef.current.delete(number);
+                          }
+                        }}
+                      />
+                    ))}
+                  </div>
+                </section>
+                {(annotationToolbarDock === "bottom" ||
+                  annotationToolbarDock === "right") && (
+                  <PdfAnnotationToolbar
+                    state={annotationToolbar}
+                    dock={annotationToolbarDock}
+                    activePage={pageNumber}
+                    onChange={changeAnnotationToolbar}
+                    onDockChange={setAnnotationToolbarDock}
+                    onUndo={() => runActivePageHistory(false)}
+                    onRedo={() => runActivePageHistory(true)}
+                  />
+                )}
+              </div>
             </Document>
           </div>
         )}

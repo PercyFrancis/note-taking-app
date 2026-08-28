@@ -132,5 +132,14 @@ Acceptance checks:
   - Entering and exiting fullscreen preserve the latest viewer scroll position. Exiting returns keyboard focus to the control that opened fullscreen.
   - Fullscreen state follows the browser Fullscreen API, so pressing `Escape` restores the normal workspace and control label.
   - Fullscreen failures are handled without leaving the controls in an incorrect state.
-- **Verification required:** Physically test pointer/stroke alignment, wheel isolation, viewport sizing, workspace-only fullscreen, `Escape`, thumbnail collapsing, focus restoration, and scroll restoration.
-- **Pending:** Stages 3–6. Begin Stage 3 only after Stage 2 fullscreen verification.
+- **Implemented; awaiting physical verification:** Stage 3 — External shared annotation toolbar.
+  - One workspace-level annotation toolbar replaces the persistent Excalidraw toolbar previously rendered above every PDF page.
+  - The toolbar provides selection, shape, arrow, line, free-draw, text, and eraser tools plus stroke color, fill color, no-fill, width, stroke style, fill style, and edge style controls.
+  - Toolbar state is shared across page changes and is reapplied when an annotation surface remounts because of a viewer zoom change.
+  - Style changes apply both to future annotations and to the currently selected elements on the active page; selected-element changes are captured as page-local undo steps.
+  - The toolbar docks to the top, right, bottom, or left of the viewer and always occupies dedicated space outside PDF page bounds.
+  - Undo and redo are labeled and routed to the currently active page editor.
+  - Excalidraw keyboard tool changes are reflected back into the shared toolbar without synchronously updating React during Excalidraw's own state update.
+  - The remaining page gutter contains only the page label; no persistent Excalidraw controls overlay PDF content.
+- **Verification required:** Physically test pointer/stroke alignment, touch pinch isolation, workspace-only fullscreen, all toolbar docks and controls, page-to-page tool retention, and active-page undo/redo.
+- **Pending:** Stages 4–6. Begin Stage 4 only after Stage 3 toolbar verification.
