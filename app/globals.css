@@ -183,6 +183,14 @@ body {
   background: transparent;
 }
 
+.pdf-annotation-layer .excalidraw .layer-ui__wrapper,
+.pdf-annotation-layer .excalidraw .App-toolbar-container,
+.pdf-annotation-layer .excalidraw .App-toolbar,
+.pdf-annotation-layer .excalidraw .App-menu,
+.pdf-annotation-layer .excalidraw .mobile-misc-tools-container {
+  display: none;
+}
+
 .pdf-annotation-layer .excalidraw .App-menu_top {
   display: none;
 }

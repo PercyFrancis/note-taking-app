@@ -753,6 +753,7 @@ export default function PdfEditorApp() {
     null,
   );
   const viewerWheelHandlerRef = useRef<(event: WheelEvent) => void>(() => {});
+  const viewerTouchCleanupRef = useRef<(() => void) | null>(null);
 
   const activeDocument =
     documents.find((document) => document.id === activeId) ?? null;
@@ -856,8 +857,10 @@ export default function PdfEditorApp() {
       );
     }
     viewerResizeObserverRef.current?.disconnect();
+    viewerTouchCleanupRef.current?.();
     viewerResizeObserverRef.current = null;
     viewerWheelListenerRef.current = null;
+    viewerTouchCleanupRef.current = null;
     viewerRef.current = element;
     if (!element) return;
     const observer = new ResizeObserver(([entry]) => {
@@ -873,6 +876,76 @@ export default function PdfEditorApp() {
       passive: false,
     });
     viewerWheelListenerRef.current = wheelListener;
+
+    const isPdfPageGesture = (event: Event) => {
+      const target = event.target;
+      return (
+        target instanceof Node && Boolean(pagesRef.current?.contains(target))
+      );
+    };
+    const blockSafariPagePinch = (event: Event) => {
+      if (!isPdfPageGesture(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    const blockSafariMultiTouch = (event: TouchEvent) => {
+      if (event.touches.length < 2 || !isPdfPageGesture(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    const nonPassiveCapture = { capture: true, passive: false } as const;
+    element.addEventListener(
+      "touchstart",
+      blockSafariMultiTouch,
+      nonPassiveCapture,
+    );
+    element.addEventListener(
+      "touchmove",
+      blockSafariMultiTouch,
+      nonPassiveCapture,
+    );
+    element.addEventListener(
+      "gesturestart",
+      blockSafariPagePinch,
+      nonPassiveCapture,
+    );
+    element.addEventListener(
+      "gesturechange",
+      blockSafariPagePinch,
+      nonPassiveCapture,
+    );
+    element.addEventListener(
+      "gestureend",
+      blockSafariPagePinch,
+      nonPassiveCapture,
+    );
+    viewerTouchCleanupRef.current = () => {
+      element.removeEventListener(
+        "touchstart",
+        blockSafariMultiTouch,
+        nonPassiveCapture,
+      );
+      element.removeEventListener(
+        "touchmove",
+        blockSafariMultiTouch,
+        nonPassiveCapture,
+      );
+      element.removeEventListener(
+        "gesturestart",
+        blockSafariPagePinch,
+        nonPassiveCapture,
+      );
+      element.removeEventListener(
+        "gesturechange",
+        blockSafariPagePinch,
+        nonPassiveCapture,
+      );
+      element.removeEventListener(
+        "gestureend",
+        blockSafariPagePinch,
+        nonPassiveCapture,
+      );
+    };
   }, []);
 
   useEffect(() => {

@@ -124,6 +124,7 @@ Acceptance checks:
   - The PDF workspace is constrained to the dynamic browser viewport and owns its scrolling, preventing simultaneous page-level and viewer-level scrolling.
   - A non-passive wheel capture isolates ordinary scrolling from `Ctrl/Cmd + wheel` PDF zoom and prevents browser/Excalidraw zoom leakage.
   - Finger gestures are claimed by the PDF viewer before Excalidraw receives the first touch: one finger pans the PDF and two fingers preview and commit bounded PDF zoom. Apple Pencil remains pen input for annotations. This prevents iPadOS pointer capture from resizing Excalidraw's hidden scene.
+  - Native non-passive `touchstart`, `touchmove`, and Safari `gesture*` guards prevent a PDF-page pinch from becoming webpage-level zoom on iPadOS.
   - Selecting the displayed zoom percentage opens a focused numeric field for custom values from 25% through 300%.
 - **Implemented; awaiting physical verification:** Stage 2 — Dedicated PDF workspace and fullscreen.
   - Fullscreen targets a bounded workspace containing the page-thumbnail rail, PDF viewer, viewer controls, and annotation surfaces.
@@ -142,6 +143,7 @@ Acceptance checks:
   - Undo and redo are labeled and routed to the currently active page editor.
   - Excalidraw keyboard tool changes are reflected back into the shared toolbar without synchronously updating React during Excalidraw's own state update.
   - The remaining page gutter contains only the page label; no persistent Excalidraw controls overlay PDF content.
+  - PDF annotation surfaces hide Excalidraw's desktop and mobile layer UI, including its mobile toolbar and miscellaneous-tools container; the external shared toolbar remains the only annotation UI.
 - **Implemented; awaiting physical verification:** Stage 4 — Continuous scrolling with shared tools.
   - Continuous scrolling measures the visible portion of each page and makes the most-visible page active as the viewer moves.
   - The shared toolbar, its selection styling, and page-scoped undo/redo are routed to that active page; no per-page toolbar is created.
