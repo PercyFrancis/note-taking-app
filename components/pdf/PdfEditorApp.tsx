@@ -85,6 +85,12 @@ interface EditableProject {
   annotations: PdfAnnotationRecord[];
 }
 
+interface PdfAnnotationEditorHandle {
+  api: ExcalidrawImperativeAPI;
+  element: HTMLDivElement;
+  flush: () => Promise<void>;
+}
+
 const SAVE_DELAY_MS = 750;
 const MULTIPART_UPLOAD_THRESHOLD_BYTES = 4 * 1024 * 1024;
 const EXPORT_PADDING_PX = 8;
@@ -364,10 +370,7 @@ function PdfAnnotationCanvas({
   onDraftChange: (scene: string) => void;
   onSave: (scene: string) => Promise<void>;
   onToolbarStateChange: (state: PdfAnnotationToolbarState) => void;
-  onEditorReady: (
-    api: ExcalidrawImperativeAPI | null,
-    element: HTMLDivElement | null,
-  ) => void;
+  onEditorReady: (editor: PdfAnnotationEditorHandle | null) => void;
 }) {
   const layerRef = useRef<HTMLDivElement>(null);
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
@@ -382,7 +385,7 @@ function PdfAnnotationCanvas({
   const toolbarSignatureRef = useRef(JSON.stringify(toolbarState));
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSaveRef = useRef<string | null>(null);
-  const isSavingRef = useRef(false);
+  const savePromiseRef = useRef<Promise<void> | null>(null);
   const canonicalZoomRef = useRef<AppState["zoom"]>(
     parseScene(scene)?.appState.zoom ?? ({ value: 1 } as AppState["zoom"]),
   );
@@ -407,43 +410,56 @@ function PdfAnnotationCanvas({
     if (api) applyPdfToolbarState(api, toolbarState);
   }, [toolbarState]);
 
-  const handleExcalidrawApi = useCallback((api: ExcalidrawImperativeAPI) => {
-    apiRef.current = api;
-    requestAnimationFrame(() => {
-      if (apiRef.current !== api) return;
-      applyPdfToolbarState(api, toolbarStateRef.current);
-      onEditorReadyRef.current(api, layerRef.current);
-    });
-  }, []);
-
   const queueSave = useCallback((next: string) => {
-    committedRef.current = next;
     pendingSaveRef.current = next;
-    if (isSavingRef.current) return;
-
-    isSavingRef.current = true;
-    void (async () => {
-      try {
-        while (pendingSaveRef.current !== null) {
-          const pending = pendingSaveRef.current;
-          pendingSaveRef.current = null;
-          await onSaveRef.current(pending);
+    if (!savePromiseRef.current) {
+      savePromiseRef.current = (async () => {
+        try {
+          while (pendingSaveRef.current !== null) {
+            const pending = pendingSaveRef.current;
+            pendingSaveRef.current = null;
+            await onSaveRef.current(pending);
+            committedRef.current = pending;
+          }
+        } finally {
+          savePromiseRef.current = null;
         }
-      } finally {
-        isSavingRef.current = false;
-      }
-    })();
+      })();
+    }
+    return savePromiseRef.current;
   }, []);
+
+  const flush = useCallback(async () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    if (latestRef.current && latestRef.current !== committedRef.current) {
+      await queueSave(latestRef.current);
+    } else if (savePromiseRef.current) {
+      await savePromiseRef.current;
+    }
+  }, [queueSave]);
+
+  const handleExcalidrawApi = useCallback(
+    (api: ExcalidrawImperativeAPI) => {
+      apiRef.current = api;
+      requestAnimationFrame(() => {
+        const element = layerRef.current;
+        if (apiRef.current !== api || !element) return;
+        applyPdfToolbarState(api, toolbarStateRef.current);
+        onEditorReadyRef.current({ api, element, flush });
+      });
+    },
+    [flush],
+  );
 
   useEffect(() => {
     return () => {
-      onEditorReadyRef.current(null, null);
-      if (timerRef.current) clearTimeout(timerRef.current);
-      if (latestRef.current && latestRef.current !== committedRef.current) {
-        queueSave(latestRef.current);
-      }
+      onEditorReadyRef.current(null);
+      void flush();
     };
-  }, [queueSave]);
+  }, [flush]);
 
   return (
     <div
@@ -571,8 +587,10 @@ function PdfEditablePage({
   scene,
   zoom,
   lazy,
+  getIntersectionRoot,
   toolbarState,
   onPageSizeChange,
+  onActivate,
   onDraftChange,
   onSave,
   onToolbarStateChange,
@@ -583,42 +601,43 @@ function PdfEditablePage({
   scene: string | undefined;
   zoom: number;
   lazy: boolean;
+  getIntersectionRoot: () => HTMLElement | null;
   toolbarState: PdfAnnotationToolbarState;
   onPageSizeChange?: (width: number, height: number) => void;
+  onActivate: () => void;
   onDraftChange: (scene: string) => void;
   onSave: (scene: string) => Promise<void>;
   onToolbarStateChange: (state: PdfAnnotationToolbarState) => void;
-  onEditorReady: (
-    api: ExcalidrawImperativeAPI | null,
-    element: HTMLDivElement | null,
-  ) => void;
+  onEditorReady: (editor: PdfAnnotationEditorHandle | null) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [shouldRender, setShouldRender] = useState(!lazy);
   const [pageSize, setPageSize] = useState({ width: 612, height: 792 });
 
   useEffect(() => {
-    if (!lazy || shouldRender) return;
+    if (!lazy) {
+      setShouldRender(true);
+      return;
+    }
     const element = containerRef.current;
     if (!element) return;
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) {
-          setShouldRender(true);
-          observer.disconnect();
-        }
+        setShouldRender(entry.isIntersecting);
       },
-      { rootMargin: "900px" },
+      { root: getIntersectionRoot(), rootMargin: "1200px 0px" },
     );
     observer.observe(element);
     return () => observer.disconnect();
-  }, [lazy, shouldRender]);
+  }, [getIntersectionRoot, lazy]);
 
   return (
     <div
       id={`pdf-page-${pageNumber}`}
+      data-pdf-page-number={pageNumber}
       ref={containerRef}
       className="mx-auto"
+      onPointerDownCapture={onActivate}
       style={{
         width: pageSize.width * zoom,
         height: pageSize.height * zoom + ANNOTATION_TOOLBAR_GUTTER_PX,
@@ -706,9 +725,11 @@ export default function PdfEditorApp() {
   const zoomInputRef = useRef<HTMLInputElement>(null);
   const objectUrlRef = useRef<string | null>(null);
   const draftScenesRef = useRef(new Map<string, string>());
+  const pageWidthsRef = useRef(new Map<number, number>());
   const workspaceRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<HTMLElement>(null);
   const pagesRef = useRef<HTMLDivElement>(null);
+  const continuousScrollFrameRef = useRef<number | null>(null);
   const activeTouchPointersRef = useRef(
     new Map<number, { x: number; y: number }>(),
   );
@@ -721,11 +742,9 @@ export default function PdfEditorApp() {
   const suppressTouchUntilClearRef = useRef(false);
   const pendingPinchZoomRef = useRef<number | null>(null);
   const annotationEditorsRef = useRef(
-    new Map<
-      number,
-      { api: ExcalidrawImperativeAPI; element: HTMLDivElement }
-    >(),
+    new Map<number, PdfAnnotationEditorHandle>(),
   );
+  const previousPageNumberRef = useRef(pageNumber);
   const fullscreenReturnFocusRef = useRef<HTMLElement | null>(null);
   const viewerScrollRef = useRef({ left: 0, top: 0 });
   const wasWorkspaceFullscreenRef = useRef(false);
@@ -751,6 +770,67 @@ export default function PdfEditorApp() {
     ),
   );
   const effectivePdfZoom = zoomMode === "fit-width" ? fitWidthZoom : pdfZoom;
+  const getViewerElement = useCallback(() => viewerRef.current, []);
+
+  useEffect(() => {
+    const previousPageNumber = previousPageNumberRef.current;
+    previousPageNumberRef.current = pageNumber;
+    const pageWidth = pageWidthsRef.current.get(pageNumber);
+    if (pageWidth) setActivePageWidth(pageWidth);
+    if (previousPageNumber === pageNumber) return;
+    void annotationEditorsRef.current
+      .get(previousPageNumber)
+      ?.flush()
+      .catch(() => setStatus("Save failed"));
+  }, [pageNumber]);
+
+  const scheduleContinuousActivePageUpdate = useCallback(() => {
+    if (viewMode !== "continuous" || continuousScrollFrameRef.current !== null)
+      return;
+    continuousScrollFrameRef.current = requestAnimationFrame(() => {
+      continuousScrollFrameRef.current = null;
+      const viewer = viewerRef.current;
+      const pages = pagesRef.current;
+      if (!viewer || !pages) return;
+
+      const viewerRect = viewer.getBoundingClientRect();
+      let bestPage: number | null = null;
+      let bestVisibleHeight = -1;
+      let bestDistance = Number.POSITIVE_INFINITY;
+      for (const page of pages.querySelectorAll<HTMLElement>(
+        "[data-pdf-page-number]",
+      )) {
+        const rect = page.getBoundingClientRect();
+        const visibleHeight = Math.max(
+          0,
+          Math.min(rect.bottom, viewerRect.bottom) -
+            Math.max(rect.top, viewerRect.top),
+        );
+        const distance = Math.abs(rect.top - viewerRect.top);
+        if (
+          visibleHeight > bestVisibleHeight ||
+          (visibleHeight === bestVisibleHeight && distance < bestDistance)
+        ) {
+          bestPage = Number(page.dataset.pdfPageNumber);
+          bestVisibleHeight = visibleHeight;
+          bestDistance = distance;
+        }
+      }
+      if (bestPage && bestVisibleHeight > 0) {
+        setPageNumber((current) => (current === bestPage ? current : bestPage));
+      }
+    });
+  }, [viewMode]);
+
+  useEffect(() => {
+    scheduleContinuousActivePageUpdate();
+    return () => {
+      if (continuousScrollFrameRef.current !== null) {
+        cancelAnimationFrame(continuousScrollFrameRef.current);
+        continuousScrollFrameRef.current = null;
+      }
+    };
+  }, [scheduleContinuousActivePageUpdate]);
 
   useLayoutEffect(() => {
     const pendingZoom = pendingPinchZoomRef.current;
@@ -1604,6 +1684,7 @@ export default function PdfEditorApp() {
                       left: event.currentTarget.scrollLeft,
                       top: event.currentTarget.scrollTop,
                     };
+                    scheduleContinuousActivePageUpdate();
                   }}
                   onPointerDownCapture={handlePdfPointerDownCapture}
                   onPointerMoveCapture={handlePdfPointerMoveCapture}
@@ -1754,12 +1835,24 @@ export default function PdfEditorApp() {
                         key={`${activeDocument.id}:${number}:${viewMode}`}
                         documentId={activeDocument.id}
                         pageNumber={number}
-                        scene={annotations[number]?.scene}
+                        scene={
+                          draftScenesRef.current.get(
+                            `${activeDocument.id}:${number}`,
+                          ) ?? annotations[number]?.scene
+                        }
                         zoom={effectivePdfZoom}
                         lazy={viewMode === "continuous"}
+                        getIntersectionRoot={getViewerElement}
                         toolbarState={annotationToolbar}
                         onPageSizeChange={(width) => {
+                          pageWidthsRef.current.set(number, width);
                           if (number === pageNumber) setActivePageWidth(width);
+                          scheduleContinuousActivePageUpdate();
+                        }}
+                        onActivate={() => {
+                          setPageNumber((current) =>
+                            current === number ? current : number,
+                          );
                         }}
                         onDraftChange={(scene) => {
                           draftScenesRef.current.set(
@@ -1768,13 +1861,14 @@ export default function PdfEditorApp() {
                           );
                         }}
                         onSave={(scene) => persistScene(number, scene)}
-                        onToolbarStateChange={setAnnotationToolbar}
-                        onEditorReady={(api, element) => {
-                          if (api && element) {
-                            annotationEditorsRef.current.set(number, {
-                              api,
-                              element,
-                            });
+                        onToolbarStateChange={(state) => {
+                          if (number === pageNumber) {
+                            setAnnotationToolbar(state);
+                          }
+                        }}
+                        onEditorReady={(editor) => {
+                          if (editor) {
+                            annotationEditorsRef.current.set(number, editor);
                           } else {
                             annotationEditorsRef.current.delete(number);
                           }

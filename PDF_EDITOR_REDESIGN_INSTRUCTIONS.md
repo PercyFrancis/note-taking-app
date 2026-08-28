@@ -142,5 +142,12 @@ Acceptance checks:
   - Undo and redo are labeled and routed to the currently active page editor.
   - Excalidraw keyboard tool changes are reflected back into the shared toolbar without synchronously updating React during Excalidraw's own state update.
   - The remaining page gutter contains only the page label; no persistent Excalidraw controls overlay PDF content.
-- **Verification required:** Physically test pointer/stroke alignment, touch pinch isolation, workspace-only fullscreen, all toolbar docks and controls, page-to-page tool retention, and active-page undo/redo.
-- **Pending:** Stages 4–6. Begin Stage 4 only after Stage 3 toolbar verification.
+- **Implemented; awaiting physical verification:** Stage 4 — Continuous scrolling with shared tools.
+  - Continuous scrolling measures the visible portion of each page and makes the most-visible page active as the viewer moves.
+  - The shared toolbar, its selection styling, and page-scoped undo/redo are routed to that active page; no per-page toolbar is created.
+  - Each page retains its own Excalidraw scene, draft, editor handle, and persistence record.
+  - Annotation canvases mount only within a 1,200-pixel preload range around the PDF viewer and unmount again outside that range, keeping the number of live Excalidraw instances bounded for large PDFs.
+  - Changing the active page immediately flushes the prior page's debounce. Unmounting a distant page also flushes its latest in-memory draft before releasing its editor.
+  - Remounting a virtualized page restores its latest draft and reapplies the shared tool and style state.
+- **Verification required:** Physically test pointer/stroke alignment, touch pinch isolation, workspace-only fullscreen, all toolbar docks and controls, continuous-scroll active-page tracking, virtualized page restoration, page-to-page tool retention, and active-page undo/redo.
+- **Pending:** Stages 5–6. Begin Stage 5 only after Stage 4 continuous-scroll verification.
