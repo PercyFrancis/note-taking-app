@@ -149,5 +149,10 @@ Acceptance checks:
   - Annotation canvases mount only within a 1,200-pixel preload range around the PDF viewer and unmount again outside that range, keeping the number of live Excalidraw instances bounded for large PDFs.
   - Changing the active page immediately flushes the prior page's debounce. Unmounting a distant page also flushes its latest in-memory draft before releasing its editor.
   - Remounting a virtualized page restores its latest draft and reapplies the shared tool and style state.
-- **Verification required:** Physically test pointer/stroke alignment, touch pinch isolation, workspace-only fullscreen, all toolbar docks and controls, continuous-scroll active-page tracking, virtualized page restoration, page-to-page tool retention, and active-page undo/redo.
-- **Pending:** Stages 5–6. Begin Stage 5 only after Stage 4 continuous-scroll verification.
+- **Implemented; awaiting physical verification:** Stage 5 — Sticky notebook sidebar.
+  - Signed-in and local-only notebook workspaces are constrained to the dynamic viewport height on desktop, preventing the browser body from carrying the sidebar away.
+  - The notebook editor propagates a bounded flex height to its cell list, which now owns notebook-content scrolling independently of the sidebar.
+  - The sidebar occupies the full desktop workspace height while its existing folder tree and notebook list remain independently scrollable.
+  - The viewport constraint begins at the desktop breakpoint; the existing stacked, document-scrolling mobile layout remains unchanged.
+- **Verification required:** Physically test pointer/stroke alignment, touch pinch isolation, workspace-only fullscreen, all toolbar docks and controls, continuous-scroll active-page tracking, virtualized page restoration, page-to-page tool retention, active-page undo/redo, independent desktop notebook/sidebar scrolling, and the mobile notebook layout.
+- **Pending:** Stage 6. Begin regression verification after the Stage 4 and Stage 5 interaction checks.

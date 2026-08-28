@@ -87,7 +87,7 @@ export default function CellList({
     >
       <div
         data-cell-scroll-container
-        className="flex-1 overflow-y-auto px-4 py-4 md:px-8 md:py-6"
+        className="flex-1 overflow-y-auto px-4 py-4 md:min-h-0 md:px-8 md:py-6"
       >
         {cells.map((cell, index) => (
           <CellFrame

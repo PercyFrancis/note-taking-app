@@ -281,8 +281,8 @@ export default function NotebookEditor({
   }
 
   return (
-    <section className="flex min-w-0 flex-1 flex-col">
-      <header className="border-b border-slate-200 bg-white px-4 py-4 md:px-8">
+    <section className="flex min-w-0 flex-1 flex-col md:min-h-0">
+      <header className="shrink-0 border-b border-slate-200 bg-white px-4 py-4 md:px-8">
         <p className="text-xs font-medium text-slate-400">
           {folderPath.length > 0 ? folderPath.join(" / ") : "Unfiled"}
         </p>

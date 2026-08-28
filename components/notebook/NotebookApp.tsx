@@ -1545,7 +1545,7 @@ export default function NotebookApp() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col bg-slate-100 text-slate-950 md:flex-row">
+    <main className="flex min-h-screen flex-col bg-slate-100 text-slate-950 md:fixed md:inset-0 md:min-h-0 md:flex-row md:overflow-hidden">
       <NotebookSidebar
         notebooks={filteredNotebooks}
         allNotebooks={notebooks}
@@ -1621,7 +1621,7 @@ export default function NotebookApp() {
           storageMode="cloud"
         />
       ) : (
-        <section className="flex min-w-0 flex-1 items-center justify-center bg-slate-50 px-6 py-12">
+        <section className="flex min-w-0 flex-1 items-center justify-center bg-slate-50 px-6 py-12 md:min-h-0 md:overflow-y-auto">
           <div className="max-w-sm text-center">
             <h2 className="text-lg font-semibold text-slate-900">
               {selectedLocation.kind === "trash"

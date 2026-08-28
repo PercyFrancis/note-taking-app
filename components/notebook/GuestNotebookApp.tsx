@@ -515,7 +515,7 @@ export default function GuestNotebookApp() {
   const activeHistory = history[activeNotebookId] ?? { undo: [], redo: [] };
 
   return (
-    <main className="flex min-h-screen flex-col bg-slate-100 text-slate-950 md:flex-row">
+    <main className="flex min-h-screen flex-col bg-slate-100 text-slate-950 md:fixed md:inset-0 md:min-h-0 md:flex-row md:overflow-hidden">
       <NotebookSidebar
         isGuest
         notebooks={filtered}
@@ -733,7 +733,7 @@ export default function GuestNotebookApp() {
           }}
         />
       ) : (
-        <section className="flex flex-1 items-center justify-center bg-slate-50 p-8 text-center text-slate-500">
+        <section className="flex flex-1 items-center justify-center bg-slate-50 p-8 text-center text-slate-500 md:min-h-0 md:overflow-y-auto">
           {selectedLocation.kind === "trash"
             ? "Restore or permanently delete local items from the sidebar."
             : "Create a local notebook to start writing."}

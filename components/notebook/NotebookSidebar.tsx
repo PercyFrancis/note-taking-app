@@ -544,7 +544,7 @@ export default function NotebookSidebar({
         }
       }}
     >
-      <aside className="flex w-full flex-col border-b border-slate-200 bg-white md:h-screen md:w-80 md:border-r md:border-b-0">
+      <aside className="flex w-full shrink-0 flex-col border-b border-slate-200 bg-white md:h-full md:min-h-0 md:w-80 md:border-r md:border-b-0">
         <input
           ref={scopedImportInputRef}
           type="file"
