@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   DEFAULT_PDF_MAX_PAGES,
   DEFAULT_PDF_MAX_UPLOAD_BYTES,
+  getPdfAnnotationPlacement,
   getPdfLimits,
   sanitizePdfFilename,
 } from "../lib/pdf.ts";
@@ -13,6 +14,26 @@ test("PDF filename sanitization prevents path traversal", () => {
     ".-course-notes.pdf",
   );
   assert.equal(sanitizePdfFilename("lecture"), "lecture.pdf");
+});
+
+test("PDF annotation placement applies the saved Excalidraw viewport", () => {
+  const placement = getPdfAnnotationPlacement({
+    bounds: [
+      611.7708333333334, -1380.7743055555557, 809.5486111111112,
+      -1275.7743055555557,
+    ],
+    scrollX: -249.58333333333334,
+    scrollY: 1505.21875,
+    zoom: 1.8,
+    pageHeight: 595.2755905511812,
+  });
+
+  assert.ok(placement.x > 0);
+  assert.ok(placement.y > 0);
+  assert.ok(placement.x < 841.8897637795277);
+  assert.ok(placement.y < 595.2755905511812);
+  assert.ok(placement.width > 0);
+  assert.ok(placement.height > 0);
 });
 
 test("PDF limits support defaults and an explicit unlimited value", () => {

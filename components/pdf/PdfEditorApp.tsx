@@ -42,6 +42,7 @@ import {
   DEFAULT_PDF_MAX_PAGES,
   DEFAULT_PDF_MAX_UPLOAD_BYTES,
   getGuestPdfLimits,
+  getPdfAnnotationPlacement,
   type PdfAnnotationRecord,
   type PdfDocumentRecord,
   sanitizePdfFilename,
@@ -119,16 +120,19 @@ function PdfAnnotationCanvas({
   scene,
   width,
   height,
+  onDraftChange,
   onSave,
 }: {
   scene: string | undefined;
   width: number;
   height: number;
+  onDraftChange: (scene: string) => void;
   onSave: (scene: string) => Promise<void>;
 }) {
   const latestRef = useRef(scene ?? "");
   const committedRef = useRef(scene ?? "");
   const onSaveRef = useRef(onSave);
+  const onDraftChangeRef = useRef(onDraftChange);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSaveRef = useRef<string | null>(null);
   const isSavingRef = useRef(false);
@@ -136,6 +140,7 @@ function PdfAnnotationCanvas({
     annotationInitialData(parseScene(scene)),
   );
   onSaveRef.current = onSave;
+  onDraftChangeRef.current = onDraftChange;
 
   const queueSave = useCallback((next: string) => {
     committedRef.current = next;
@@ -194,6 +199,7 @@ function PdfAnnotationCanvas({
           } satisfies StoredPdfScene);
           if (next === latestRef.current) return;
           latestRef.current = next;
+          onDraftChangeRef.current(next);
           if (timerRef.current) clearTimeout(timerRef.current);
           if (next === committedRef.current) return;
           timerRef.current = setTimeout(() => {
@@ -286,6 +292,7 @@ export default function PdfEditorApp() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const projectInputRef = useRef<HTMLInputElement>(null);
   const objectUrlRef = useRef<string | null>(null);
+  const draftScenesRef = useRef(new Map<string, string>());
 
   const activeDocument =
     documents.find((document) => document.id === activeId) ?? null;
@@ -589,8 +596,22 @@ export default function PdfEditorApp() {
       const { exportToBlob, getCommonBounds } = await import(
         "@excalidraw/excalidraw"
       );
-      for (const annotation of Object.values(annotations)) {
-        const scene = parseScene(annotation.scene);
+      const scenesByPage = new Map(
+        Object.values(annotations).map((annotation) => [
+          annotation.pageNumber,
+          annotation.scene,
+        ]),
+      );
+      const draftPrefix = `${activeDocument.id}:`;
+      for (const [key, draftScene] of draftScenesRef.current) {
+        if (!key.startsWith(draftPrefix)) continue;
+        const draftPageNumber = Number(key.slice(draftPrefix.length));
+        if (Number.isSafeInteger(draftPageNumber)) {
+          scenesByPage.set(draftPageNumber, draftScene);
+        }
+      }
+      for (const [annotationPageNumber, annotationScene] of scenesByPage) {
+        const scene = parseScene(annotationScene);
         const elements =
           scene?.elements.filter((element) => !element.isDeleted) ?? [];
         if (!scene || elements.length === 0) continue;
@@ -610,13 +631,18 @@ export default function PdfEditorApp() {
           exportPadding: 0,
         });
         const image = await pdf.embedPng(await overlay.arrayBuffer());
-        const page = pdf.getPage(annotation.pageNumber - 1);
-        page.drawImage(image, {
-          x: x1,
-          y: page.getHeight() - y2,
-          width: x2 - x1,
-          height: y2 - y1,
-        });
+        const page = pdf.getPage(annotationPageNumber - 1);
+        const zoom = Math.max(0.01, scene.appState.zoom?.value ?? 1);
+        page.drawImage(
+          image,
+          getPdfAnnotationPlacement({
+            bounds: [x1, y1, x2, y2],
+            scrollX: scene.appState.scrollX,
+            scrollY: scene.appState.scrollY,
+            zoom,
+            pageHeight: page.getHeight(),
+          }),
+        );
       }
       const result = await pdf.save();
       downloadBlob(
@@ -846,6 +872,12 @@ export default function PdfEditorApp() {
                     scene={annotations[pageNumber]?.scene}
                     width={pageSize.width}
                     height={pageSize.height}
+                    onDraftChange={(scene) => {
+                      draftScenesRef.current.set(
+                        `${activeDocument.id}:${pageNumber}`,
+                        scene,
+                      );
+                    }}
                     onSave={persistScene}
                   />
                 </div>

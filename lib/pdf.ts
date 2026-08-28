@@ -49,6 +49,31 @@ export function sanitizePdfFilename(filename: string): string {
     : `${safe || "document"}.pdf`;
 }
 
+export function getPdfAnnotationPlacement({
+  bounds: [x1, y1, x2, y2],
+  scrollX,
+  scrollY,
+  zoom,
+  pageHeight,
+}: {
+  bounds: readonly [number, number, number, number];
+  scrollX: number;
+  scrollY: number;
+  zoom: number;
+  pageHeight: number;
+}) {
+  const safeZoom = Math.max(0.01, zoom);
+  const width = (x2 - x1) * safeZoom;
+  const height = (y2 - y1) * safeZoom;
+  const viewportY = (y1 + scrollY) * safeZoom;
+  return {
+    x: (x1 + scrollX) * safeZoom,
+    y: pageHeight - viewportY - height,
+    width,
+    height,
+  };
+}
+
 export interface PdfDocumentRecord {
   id: string;
   title: string;
