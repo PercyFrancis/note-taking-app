@@ -139,6 +139,14 @@ function annotationInitialData(
       currentItemStrokeWidth: toolbarState.strokeWidth,
       currentItemStrokeStyle: toolbarState.strokeStyle,
       currentItemRoughness: toolbarState.roughness,
+      currentItemOpacity: toolbarState.opacity,
+      currentItemRoundness: toolbarState.roundness,
+      currentItemFontFamily:
+        toolbarState.fontFamily as AppState["currentItemFontFamily"],
+      currentItemFontSize: toolbarState.fontSize,
+      currentItemTextAlign: toolbarState.textAlign,
+      currentItemStartArrowhead: toolbarState.startArrowhead,
+      currentItemEndArrowhead: toolbarState.endArrowhead,
       viewBackgroundColor: "transparent",
     },
   };
@@ -160,7 +168,10 @@ function applyPdfToolbarState(
   api: ExcalidrawImperativeAPI,
   toolbarState: PdfAnnotationToolbarState,
 ) {
-  api.setActiveTool({ type: toolbarState.tool });
+  api.setActiveTool({
+    type: toolbarState.tool,
+    locked: toolbarState.toolLocked,
+  });
   api.updateScene({
     appState: {
       currentItemStrokeColor: toolbarState.strokeColor,
@@ -169,6 +180,14 @@ function applyPdfToolbarState(
       currentItemStrokeWidth: toolbarState.strokeWidth,
       currentItemStrokeStyle: toolbarState.strokeStyle,
       currentItemRoughness: toolbarState.roughness,
+      currentItemOpacity: toolbarState.opacity,
+      currentItemRoundness: toolbarState.roundness,
+      currentItemFontFamily:
+        toolbarState.fontFamily as AppState["currentItemFontFamily"],
+      currentItemFontSize: toolbarState.fontSize,
+      currentItemTextAlign: toolbarState.textAlign,
+      currentItemStartArrowhead: toolbarState.startArrowhead,
+      currentItemEndArrowhead: toolbarState.endArrowhead,
     },
     captureUpdate: "NEVER",
   });
@@ -180,18 +199,39 @@ function applyPdfToolbarChangeToSelection(
 ) {
   const selectedElementIds = api.getAppState().selectedElementIds;
   if (!Object.keys(selectedElementIds).length) return;
+  const originalElements = api.getSceneElementsIncludingDeleted();
+  const targetElementIds = new Set(Object.keys(selectedElementIds));
+  for (const element of originalElements) {
+    if (!selectedElementIds[element.id]) continue;
+    for (const binding of element.boundElements ?? []) {
+      if (binding.type === "text") targetElementIds.add(binding.id);
+    }
+  }
   const hasStyleChange =
     change.strokeColor !== undefined ||
     change.backgroundColor !== undefined ||
     change.fillStyle !== undefined ||
     change.strokeWidth !== undefined ||
     change.strokeStyle !== undefined ||
-    change.roughness !== undefined;
+    change.roughness !== undefined ||
+    change.opacity !== undefined ||
+    change.roundness !== undefined ||
+    change.fontFamily !== undefined ||
+    change.fontSize !== undefined ||
+    change.textAlign !== undefined ||
+    change.startArrowhead !== undefined ||
+    change.endArrowhead !== undefined;
   if (!hasStyleChange) return;
 
   const updatedAt = Date.now();
-  const elements = api.getSceneElementsIncludingDeleted().map((element) => {
-    if (!selectedElementIds[element.id]) return element;
+  const elements = originalElements.map((element) => {
+    if (!targetElementIds.has(element.id)) return element;
+    const isText = element.type === "text";
+    const isLinear = element.type === "arrow" || element.type === "line";
+    const fontScale =
+      isText && change.fontSize !== undefined
+        ? change.fontSize / element.fontSize
+        : 1;
     return {
       ...element,
       ...(change.strokeColor !== undefined
@@ -212,12 +252,42 @@ function applyPdfToolbarChangeToSelection(
       ...(change.roughness !== undefined
         ? { roughness: change.roughness }
         : {}),
+      ...(change.opacity !== undefined ? { opacity: change.opacity } : {}),
+      ...(change.roundness !== undefined &&
+      !["ellipse", "freedraw", "text", "image"].includes(element.type)
+        ? {
+            roundness:
+              change.roundness === "round"
+                ? { type: element.type === "rectangle" ? 3 : 2 }
+                : null,
+          }
+        : {}),
+      ...(isText && change.fontFamily !== undefined
+        ? { fontFamily: change.fontFamily }
+        : {}),
+      ...(isText && change.fontSize !== undefined
+        ? {
+            fontSize: change.fontSize,
+            width: element.width * fontScale,
+            height: element.height * fontScale,
+          }
+        : {}),
+      ...(isText && change.textAlign !== undefined
+        ? { textAlign: change.textAlign }
+        : {}),
+      ...(isLinear && change.startArrowhead !== undefined
+        ? { startArrowhead: change.startArrowhead }
+        : {}),
+      ...(isLinear && change.endArrowhead !== undefined
+        ? { endArrowhead: change.endArrowhead }
+        : {}),
       version: element.version + 1,
       versionNonce: Math.floor(Math.random() * 2 ** 31),
       updated: updatedAt,
     } as OrderedExcalidrawElement;
   });
   api.updateScene({ elements, captureUpdate: "IMMEDIATELY" });
+  api.refresh();
 }
 
 function toolbarStateFromAppState(
@@ -231,14 +301,47 @@ function toolbarStateFromAppState(
     : fallback.tool;
   return {
     tool,
-    strokeColor: appState.currentItemStrokeColor,
-    backgroundColor: appState.currentItemBackgroundColor,
+    toolLocked: appState.activeTool.locked ?? fallback.toolLocked,
+    strokeColor: appState.currentItemStrokeColor || fallback.strokeColor,
+    backgroundColor:
+      appState.currentItemBackgroundColor ?? fallback.backgroundColor,
     fillStyle:
-      appState.currentItemFillStyle as PdfAnnotationToolbarState["fillStyle"],
-    strokeWidth: appState.currentItemStrokeWidth as 1 | 2 | 4,
+      (appState.currentItemFillStyle as PdfAnnotationToolbarState["fillStyle"]) ??
+      fallback.fillStyle,
+    strokeWidth: ([1, 2, 4] as const).includes(
+      appState.currentItemStrokeWidth as 1 | 2 | 4,
+    )
+      ? (appState.currentItemStrokeWidth as 1 | 2 | 4)
+      : fallback.strokeWidth,
     strokeStyle:
-      appState.currentItemStrokeStyle as PdfAnnotationToolbarState["strokeStyle"],
-    roughness: appState.currentItemRoughness as 0 | 1 | 2,
+      (appState.currentItemStrokeStyle as PdfAnnotationToolbarState["strokeStyle"]) ??
+      fallback.strokeStyle,
+    roughness: ([0, 1, 2] as const).includes(
+      appState.currentItemRoughness as 0 | 1 | 2,
+    )
+      ? (appState.currentItemRoughness as 0 | 1 | 2)
+      : fallback.roughness,
+    opacity: Number.isFinite(appState.currentItemOpacity)
+      ? appState.currentItemOpacity
+      : fallback.opacity,
+    roundness: appState.currentItemRoundness ?? fallback.roundness,
+    fontFamily: Number.isFinite(appState.currentItemFontFamily)
+      ? appState.currentItemFontFamily
+      : fallback.fontFamily,
+    fontSize: Number.isFinite(appState.currentItemFontSize)
+      ? appState.currentItemFontSize
+      : fallback.fontSize,
+    textAlign:
+      (appState.currentItemTextAlign as PdfAnnotationToolbarState["textAlign"]) ??
+      fallback.textAlign,
+    startArrowhead:
+      appState.currentItemStartArrowhead === undefined
+        ? fallback.startArrowhead
+        : (appState.currentItemStartArrowhead as PdfAnnotationToolbarState["startArrowhead"]),
+    endArrowhead:
+      appState.currentItemEndArrowhead === undefined
+        ? fallback.endArrowhead
+        : (appState.currentItemEndArrowhead as PdfAnnotationToolbarState["endArrowhead"]),
   };
 }
 
@@ -902,11 +1005,26 @@ export default function PdfEditorApp() {
   const changeAnnotationToolbar = (
     change: Partial<PdfAnnotationToolbarState>,
   ) => {
-    setAnnotationToolbar((current) => ({ ...current, ...change }));
+    const normalizedChange =
+      change.tool === "selection" || change.tool === "eraser"
+        ? { ...change, toolLocked: false }
+        : change;
+    setAnnotationToolbar((current) => ({
+      ...current,
+      ...normalizedChange,
+    }));
     const editor = annotationEditorsRef.current.get(pageNumber);
     if (!editor) return;
-    if (change.tool) editor.api.setActiveTool({ type: change.tool });
-    applyPdfToolbarChangeToSelection(editor.api, change);
+    if (
+      normalizedChange.tool !== undefined ||
+      normalizedChange.toolLocked !== undefined
+    ) {
+      editor.api.setActiveTool({
+        type: normalizedChange.tool ?? annotationToolbar.tool,
+        locked: normalizedChange.toolLocked ?? annotationToolbar.toolLocked,
+      });
+    }
+    applyPdfToolbarChangeToSelection(editor.api, normalizedChange);
   };
 
   const reloadDocuments = useCallback(async () => {

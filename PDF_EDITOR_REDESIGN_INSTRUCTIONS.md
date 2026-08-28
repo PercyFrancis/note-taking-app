@@ -135,6 +135,7 @@ Acceptance checks:
 - **Implemented; awaiting physical verification:** Stage 3 — External shared annotation toolbar.
   - One workspace-level annotation toolbar replaces the persistent Excalidraw toolbar previously rendered above every PDF page.
   - The toolbar provides selection, shape, arrow, line, free-draw, text, and eraser tools plus stroke color, fill color, no-fill, width, stroke style, fill style, and edge style controls.
+  - Contextual controls restore the useful Excalidraw properties hidden with the old toolbar: font family, custom font size, text alignment, opacity, rounded/sharp edges, start/end arrowheads, and a keep-tool-active toggle.
   - Toolbar state is shared across page changes and is reapplied when an annotation surface remounts because of a viewer zoom change.
   - Style changes apply both to future annotations and to the currently selected elements on the active page; selected-element changes are captured as page-local undo steps.
   - The toolbar docks to the top, right, bottom, or left of the viewer and always occupies dedicated space outside PDF page bounds.

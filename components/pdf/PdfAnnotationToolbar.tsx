@@ -15,22 +15,38 @@ export type PdfToolbarDock = "top" | "right" | "bottom" | "left";
 
 export interface PdfAnnotationToolbarState {
   tool: PdfAnnotationTool;
+  toolLocked: boolean;
   strokeColor: string;
   backgroundColor: string;
   fillStyle: "hachure" | "cross-hatch" | "solid";
   strokeWidth: 1 | 2 | 4;
   strokeStyle: "solid" | "dashed" | "dotted";
   roughness: 0 | 1 | 2;
+  opacity: number;
+  roundness: "round" | "sharp";
+  fontFamily: number;
+  fontSize: number;
+  textAlign: "left" | "center" | "right";
+  startArrowhead: "arrow" | "bar" | "dot" | "triangle" | null;
+  endArrowhead: "arrow" | "bar" | "dot" | "triangle" | null;
 }
 
 export const DEFAULT_PDF_ANNOTATION_TOOLBAR_STATE: PdfAnnotationToolbarState = {
   tool: "selection",
+  toolLocked: false,
   strokeColor: "#1e1e1e",
   backgroundColor: "transparent",
   fillStyle: "hachure",
   strokeWidth: 2,
   strokeStyle: "solid",
   roughness: 1,
+  opacity: 100,
+  roundness: "round",
+  fontFamily: 5,
+  fontSize: 20,
+  textAlign: "left",
+  startArrowhead: null,
+  endArrowhead: "arrow",
 };
 
 const TOOLS: Array<{
@@ -70,6 +86,13 @@ export function PdfAnnotationToolbar({
   const fieldClass = isVertical
     ? "w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs"
     : "rounded border border-slate-300 bg-white px-2 py-1 text-xs";
+  const showTextControls = state.tool === "text" || state.tool === "selection";
+  const showArrowControls =
+    state.tool === "arrow" ||
+    state.tool === "line" ||
+    state.tool === "selection";
+  const showRoundness = !["freedraw", "text", "eraser"].includes(state.tool);
+  const canLockTool = state.tool !== "selection" && state.tool !== "eraser";
 
   return (
     <div
@@ -110,7 +133,7 @@ export function PdfAnnotationToolbar({
         Stroke
         <input
           type="color"
-          value={state.strokeColor}
+          value={state.strokeColor || "#1e1e1e"}
           onChange={(event) => onChange({ strokeColor: event.target.value })}
           className="h-7 w-8 cursor-pointer rounded border border-slate-300 bg-white p-0.5"
         />
@@ -125,7 +148,7 @@ export function PdfAnnotationToolbar({
           value={
             state.backgroundColor === "transparent"
               ? "#ffffff"
-              : state.backgroundColor
+              : state.backgroundColor || "#ffffff"
           }
           onChange={(event) =>
             onChange({ backgroundColor: event.target.value })
@@ -219,6 +242,180 @@ export function PdfAnnotationToolbar({
           <option value={2}>Rough</option>
         </select>
       </label>
+
+      <label
+        className={`flex items-center gap-1 text-xs ${isVertical ? "flex-col items-stretch" : ""}`}
+      >
+        Opacity
+        <input
+          type="range"
+          min={10}
+          max={100}
+          step={10}
+          value={Number.isFinite(state.opacity) ? state.opacity : 100}
+          onChange={(event) =>
+            onChange({ opacity: Number(event.target.value) })
+          }
+          className={isVertical ? "w-full" : "w-20"}
+        />
+        <span className="tabular-nums">{state.opacity}%</span>
+      </label>
+
+      {showRoundness && (
+        <label className="text-xs">
+          <span className="sr-only">Shape edges</span>
+          <select
+            className={fieldClass}
+            value={state.roundness}
+            onChange={(event) =>
+              onChange({
+                roundness: event.target
+                  .value as PdfAnnotationToolbarState["roundness"],
+              })
+            }
+            title="Shape edges"
+          >
+            <option value="round">Rounded edges</option>
+            <option value="sharp">Sharp edges</option>
+          </select>
+        </label>
+      )}
+
+      {showTextControls && (
+        <>
+          <label
+            className={`flex items-center gap-1 text-xs ${isVertical ? "flex-col items-stretch" : ""}`}
+          >
+            Font
+            <select
+              className={fieldClass}
+              value={state.fontFamily}
+              onChange={(event) =>
+                onChange({ fontFamily: Number(event.target.value) })
+              }
+              title="Font family"
+            >
+              <option value={5}>Excalifont</option>
+              <option value={1}>Virgil</option>
+              <option value={2}>Helvetica</option>
+              <option value={3}>Cascadia</option>
+              <option value={6}>Nunito</option>
+              <option value={7}>Lilita One</option>
+              <option value={8}>Comic Shanns</option>
+              <option value={9}>Liberation Sans</option>
+            </select>
+          </label>
+          <label
+            className={`flex items-center gap-1 text-xs ${isVertical ? "flex-col items-stretch" : ""}`}
+          >
+            Size
+            <input
+              type="number"
+              min={1}
+              max={200}
+              step={1}
+              value={Number.isFinite(state.fontSize) ? state.fontSize : 20}
+              onChange={(event) =>
+                onChange({
+                  fontSize: Math.min(
+                    200,
+                    Math.max(1, Number(event.target.value)),
+                  ),
+                })
+              }
+              className={`${fieldClass} ${isVertical ? "" : "w-20"}`}
+              title="Font size"
+            />
+          </label>
+          <label
+            className={`flex items-center gap-1 text-xs ${isVertical ? "flex-col items-stretch" : ""}`}
+          >
+            Align
+            <select
+              className={fieldClass}
+              value={state.textAlign}
+              onChange={(event) =>
+                onChange({
+                  textAlign: event.target
+                    .value as PdfAnnotationToolbarState["textAlign"],
+                })
+              }
+              title="Text alignment"
+            >
+              <option value="left">Align left</option>
+              <option value="center">Align center</option>
+              <option value="right">Align right</option>
+            </select>
+          </label>
+        </>
+      )}
+
+      {showArrowControls && (
+        <>
+          <label className="text-xs">
+            <span className="sr-only">Start arrowhead</span>
+            <select
+              className={fieldClass}
+              value={state.startArrowhead ?? "none"}
+              onChange={(event) =>
+                onChange({
+                  startArrowhead:
+                    event.target.value === "none"
+                      ? null
+                      : (event.target
+                          .value as PdfAnnotationToolbarState["startArrowhead"]),
+                })
+              }
+              title="Start arrowhead"
+            >
+              <option value="none">No start head</option>
+              <option value="arrow">Start arrow</option>
+              <option value="triangle">Start triangle</option>
+              <option value="dot">Start dot</option>
+              <option value="bar">Start bar</option>
+            </select>
+          </label>
+          <label className="text-xs">
+            <span className="sr-only">End arrowhead</span>
+            <select
+              className={fieldClass}
+              value={state.endArrowhead ?? "none"}
+              onChange={(event) =>
+                onChange({
+                  endArrowhead:
+                    event.target.value === "none"
+                      ? null
+                      : (event.target
+                          .value as PdfAnnotationToolbarState["endArrowhead"]),
+                })
+              }
+              title="End arrowhead"
+            >
+              <option value="none">No end head</option>
+              <option value="arrow">End arrow</option>
+              <option value="triangle">End triangle</option>
+              <option value="dot">End dot</option>
+              <option value="bar">End bar</option>
+            </select>
+          </label>
+        </>
+      )}
+
+      {canLockTool && (
+        <button
+          type="button"
+          aria-pressed={state.toolLocked}
+          className={`rounded border px-2 py-1 text-xs ${
+            state.toolLocked
+              ? "border-sky-600 bg-sky-50 text-sky-700"
+              : "border-slate-300"
+          }`}
+          onClick={() => onChange({ toolLocked: !state.toolLocked })}
+          title="Keep the selected tool active after drawing"
+        >
+          Keep tool
+        </button>
+      )}
 
       <div className={`flex gap-1 ${isVertical ? "flex-col" : ""}`}>
         <button
