@@ -41,3 +41,30 @@ index b3155bf06ccdc90dd677be6b21293a78dcd46493..0bbe754ddfc5e3d02aea018f2202198c
      const onKeyDown = useCallback2(
        (event) => {
          const handled = fontPickerKeyHandler({
+@@ -26979,6 +26997,6 @@ var App = class _App extends React43.Component {
+         const scaleFactor = this.state.activeTool.type === "freedraw" && this.state.penMode ? 1 : distance2 / gesture.initialDistance;
+         const nextZoom = scaleFactor ? getNormalizedZoom(initialScale * scaleFactor) : this.state.zoom.value;
+-        this.setState((state) => {
++        this.translateCanvas((state) => {
+           const zoomState = getStateForZoom(
+             {
+               viewportX: center.x,
+@@ -26988,8 +27006,8 @@ var App = class _App extends React43.Component {
+               nextZoom
+             },
+             state
+           );
+-          this.translateCanvas({
++          return {
+             zoom: zoomState.zoom,
+             // 2x multiplier is just a magic number that makes this work correctly
+             // on touchscreen devices (note: if we get report that panning is slower/faster
+@@ -26997,7 +27015,7 @@ var App = class _App extends React43.Component {
+             scrollX: zoomState.scrollX + 2 * (deltaX / nextZoom),
+             scrollY: zoomState.scrollY + 2 * (deltaY / nextZoom),
+             shouldCacheIgnoreZoom: true
+-          });
++          };
+         });
+         this.resetShouldCacheIgnoreZoomDebounced();
+       } else {

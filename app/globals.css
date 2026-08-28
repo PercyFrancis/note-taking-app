@@ -161,7 +161,31 @@ body {
 .markdown-preview code::after {
   content: none;
 }
+.pdf-annotation-toolbar-gutter {
+  background: color-mix(in srgb, var(--color-slate-100) 92%, white);
+}
+
+.pdf-annotation-layer,
 .pdf-annotation-layer .excalidraw,
-.pdf-annotation-layer .excalidraw .App-menu_top {
+.pdf-annotation-layer .excalidraw .layer-ui__wrapper {
+  overflow: visible;
+}
+
+.pdf-annotation-layer .excalidraw {
   background: transparent;
+}
+
+.pdf-annotation-layer .excalidraw .App-menu_top {
+  transform: translateY(-3.75rem);
+  border: 1px solid var(--color-slate-300);
+  border-radius: 0.5rem;
+  background: white;
+  box-shadow: 0 1px 3px rgb(15 23 42 / 0.12);
+}
+
+.pdf-annotation-layer .excalidraw .App-bottom-bar,
+.pdf-annotation-layer .excalidraw .layer-ui__wrapper__footer,
+.pdf-annotation-layer .excalidraw .main-menu-trigger,
+.pdf-annotation-layer .excalidraw .help-icon {
+  display: none;
 }

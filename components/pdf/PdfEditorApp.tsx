@@ -17,6 +17,7 @@ import {
   type ChangeEvent,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -77,6 +78,10 @@ interface EditableProject {
 
 const SAVE_DELAY_MS = 750;
 const MULTIPART_UPLOAD_THRESHOLD_BYTES = 4 * 1024 * 1024;
+const EXPORT_PADDING_PX = 8;
+const ANNOTATION_TOOLBAR_GUTTER_PX = 64;
+const MIN_PDF_ZOOM = 0.25;
+const MAX_PDF_ZOOM = 3;
 
 function parseScene(scene: string | undefined): StoredPdfScene | null {
   if (!scene) return null;
@@ -105,12 +110,19 @@ function downloadBlob(blob: Blob, filename: string) {
 
 function annotationInitialData(
   scene: StoredPdfScene | null,
+  viewerZoom: number,
 ): ExcalidrawInitialDataState {
+  const canonicalZoom =
+    scene?.appState.zoom ?? ({ value: 1 } as AppState["zoom"]);
   return {
     elements: scene?.elements ?? [],
     files: scene?.files ?? {},
     appState: {
       ...(scene?.appState ?? {}),
+      zoom: {
+        ...canonicalZoom,
+        value: (canonicalZoom.value * viewerZoom) as AppState["zoom"]["value"],
+      },
       viewBackgroundColor: "transparent",
     },
   };
@@ -120,24 +132,35 @@ function PdfAnnotationCanvas({
   scene,
   width,
   height,
+  viewerZoom,
   onDraftChange,
   onSave,
 }: {
   scene: string | undefined;
   width: number;
   height: number;
+  viewerZoom: number;
   onDraftChange: (scene: string) => void;
   onSave: (scene: string) => Promise<void>;
 }) {
   const latestRef = useRef(scene ?? "");
+  const initialSceneRef = useRef(scene);
   const committedRef = useRef(scene ?? "");
   const onSaveRef = useRef(onSave);
   const onDraftChangeRef = useRef(onDraftChange);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSaveRef = useRef<string | null>(null);
   const isSavingRef = useRef(false);
-  const [initialData] = useState(() =>
-    annotationInitialData(parseScene(scene)),
+  const canonicalZoomRef = useRef<AppState["zoom"]>(
+    parseScene(scene)?.appState.zoom ?? ({ value: 1 } as AppState["zoom"]),
+  );
+  const initialData = useMemo(
+    () =>
+      annotationInitialData(
+        parseScene(latestRef.current || initialSceneRef.current),
+        viewerZoom,
+      ),
+    [viewerZoom],
   );
   onSaveRef.current = onSave;
   onDraftChangeRef.current = onDraftChange;
@@ -176,6 +199,7 @@ function PdfAnnotationCanvas({
       style={{ width, height }}
     >
       <Excalidraw
+        key={`viewer-zoom-${viewerZoom}`}
         initialData={initialData}
         UIOptions={{
           tools: { image: false },
@@ -193,7 +217,7 @@ function PdfAnnotationCanvas({
             appState: {
               scrollX: appState.scrollX,
               scrollY: appState.scrollY,
-              zoom: appState.zoom,
+              zoom: canonicalZoomRef.current,
             },
             files,
           } satisfies StoredPdfScene);
@@ -276,6 +300,105 @@ function PdfThumbnail({
   );
 }
 
+function PdfEditablePage({
+  documentId,
+  pageNumber,
+  scene,
+  zoom,
+  lazy,
+  onPageSizeChange,
+  onDraftChange,
+  onSave,
+}: {
+  documentId: string;
+  pageNumber: number;
+  scene: string | undefined;
+  zoom: number;
+  lazy: boolean;
+  onPageSizeChange?: (width: number, height: number) => void;
+  onDraftChange: (scene: string) => void;
+  onSave: (scene: string) => Promise<void>;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [shouldRender, setShouldRender] = useState(!lazy);
+  const [pageSize, setPageSize] = useState({ width: 612, height: 792 });
+
+  useEffect(() => {
+    if (!lazy || shouldRender) return;
+    const element = containerRef.current;
+    if (!element) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setShouldRender(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "900px" },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [lazy, shouldRender]);
+
+  return (
+    <div
+      id={`pdf-page-${pageNumber}`}
+      ref={containerRef}
+      className="mx-auto"
+      style={{
+        width: pageSize.width * zoom,
+        height: pageSize.height * zoom + ANNOTATION_TOOLBAR_GUTTER_PX,
+      }}
+    >
+      <div style={{ width: pageSize.width * zoom }}>
+        <div
+          className="pdf-annotation-toolbar-gutter flex items-center px-2 text-xs text-slate-500"
+          style={{ height: ANNOTATION_TOOLBAR_GUTTER_PX }}
+        >
+          Page {pageNumber}
+        </div>
+        <div
+          className="relative overflow-visible border border-slate-300 bg-white shadow-lg"
+          style={{
+            width: pageSize.width * zoom,
+            height: pageSize.height * zoom,
+          }}
+        >
+          {shouldRender ? (
+            <>
+              <Page
+                pageNumber={pageNumber}
+                scale={zoom}
+                onLoadSuccess={(page) => {
+                  const viewport = page.getViewport({ scale: 1 });
+                  setPageSize({
+                    width: viewport.width,
+                    height: viewport.height,
+                  });
+                  onPageSizeChange?.(viewport.width, viewport.height);
+                }}
+              />
+              <PdfAnnotationCanvas
+                key={`${documentId}:${pageNumber}`}
+                scene={scene}
+                width={pageSize.width * zoom}
+                height={pageSize.height * zoom}
+                viewerZoom={zoom}
+                onDraftChange={onDraftChange}
+                onSave={onSave}
+              />
+            </>
+          ) : (
+            <div className="flex h-full items-center justify-center text-sm text-slate-400">
+              Loading page {pageNumber}…
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function PdfEditorApp() {
   const { isLoaded, isSignedIn, userId } = useAuth();
   const isCloud = Boolean(isSignedIn);
@@ -285,17 +408,121 @@ export default function PdfEditorApp() {
     Record<number, PdfAnnotationRecord>
   >({});
   const [pageNumber, setPageNumber] = useState(1);
-  const [pageSize, setPageSize] = useState({ width: 612, height: 792 });
+  const [pdfZoom, setPdfZoom] = useState(1);
+  const [zoomMode, setZoomMode] = useState<"fit-width" | "custom">("fit-width");
+  const [isEditingZoom, setIsEditingZoom] = useState(false);
+  const [zoomInput, setZoomInput] = useState("100");
+  const [viewerWidth, setViewerWidth] = useState(0);
+  const [activePageWidth, setActivePageWidth] = useState(612);
+  const [viewMode, setViewMode] = useState<"single" | "continuous">("single");
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [pdfSource, setPdfSource] = useState<string | Blob | null>(null);
   const [status, setStatus] = useState("Loading…");
   const [isBusy, setIsBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const projectInputRef = useRef<HTMLInputElement>(null);
+  const zoomInputRef = useRef<HTMLInputElement>(null);
   const objectUrlRef = useRef<string | null>(null);
   const draftScenesRef = useRef(new Map<string, string>());
+  const mainRef = useRef<HTMLElement>(null);
+  const viewerRef = useRef<HTMLElement>(null);
+  const viewerResizeObserverRef = useRef<ResizeObserver | null>(null);
+  const viewerWheelListenerRef = useRef<((event: WheelEvent) => void) | null>(
+    null,
+  );
+  const viewerWheelHandlerRef = useRef<(event: WheelEvent) => void>(() => {});
 
   const activeDocument =
     documents.find((document) => document.id === activeId) ?? null;
+
+  useEffect(() => {
+    if (!isEditingZoom) return;
+    zoomInputRef.current?.focus();
+    zoomInputRef.current?.select();
+  }, [isEditingZoom]);
+  const fitWidthZoom = Math.min(
+    MAX_PDF_ZOOM,
+    Math.max(
+      MIN_PDF_ZOOM,
+      viewerWidth > 0 ? (viewerWidth - 32) / activePageWidth : 1,
+    ),
+  );
+  const effectivePdfZoom = zoomMode === "fit-width" ? fitWidthZoom : pdfZoom;
+
+  const observeViewer = useCallback((element: HTMLElement | null) => {
+    if (viewerRef.current && viewerWheelListenerRef.current) {
+      viewerRef.current.removeEventListener(
+        "wheel",
+        viewerWheelListenerRef.current,
+        true,
+      );
+    }
+    viewerResizeObserverRef.current?.disconnect();
+    viewerResizeObserverRef.current = null;
+    viewerWheelListenerRef.current = null;
+    viewerRef.current = element;
+    if (!element) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setViewerWidth(entry.contentRect.width);
+    });
+    observer.observe(element);
+    viewerResizeObserverRef.current = observer;
+    const wheelListener = (event: WheelEvent) => {
+      viewerWheelHandlerRef.current(event);
+    };
+    element.addEventListener("wheel", wheelListener, {
+      capture: true,
+      passive: false,
+    });
+    viewerWheelListenerRef.current = wheelListener;
+  }, []);
+
+  useEffect(() => {
+    const updateFullscreenState = () => {
+      setIsFullscreen(document.fullscreenElement === mainRef.current);
+    };
+    document.addEventListener("fullscreenchange", updateFullscreenState);
+    return () =>
+      document.removeEventListener("fullscreenchange", updateFullscreenState);
+  }, []);
+
+  const toggleFullscreen = async () => {
+    if (document.fullscreenElement === mainRef.current) {
+      await document.exitFullscreen();
+    } else {
+      await mainRef.current?.requestFullscreen();
+    }
+  };
+
+  const changePdfZoom = (change: number) => {
+    setZoomMode("custom");
+    setPdfZoom(
+      Math.min(MAX_PDF_ZOOM, Math.max(MIN_PDF_ZOOM, effectivePdfZoom + change)),
+    );
+  };
+
+  viewerWheelHandlerRef.current = (event) => {
+    event.stopPropagation();
+    if (!event.ctrlKey && !event.metaKey) return;
+    event.preventDefault();
+    changePdfZoom(event.deltaY < 0 ? 0.1 : -0.1);
+  };
+
+  const startEditingZoom = () => {
+    setZoomInput(String(Math.round(effectivePdfZoom * 100)));
+    setIsEditingZoom(true);
+  };
+
+  const commitZoomInput = () => {
+    const percentage = Number(zoomInput);
+    if (Number.isFinite(percentage)) {
+      setPdfZoom(
+        Math.min(MAX_PDF_ZOOM, Math.max(MIN_PDF_ZOOM, percentage / 100)),
+      );
+      setZoomMode("custom");
+    }
+    setIsEditingZoom(false);
+  };
 
   const reloadDocuments = useCallback(async () => {
     if (!isLoaded) return;
@@ -521,28 +748,37 @@ export default function PdfEditorApp() {
   };
 
   const persistScene = useCallback(
-    async (scene: string) => {
+    async (annotationPageNumber: number, scene: string) => {
       if (!activeDocument) return;
       setStatus("Saving…");
       setAnnotations((current) => ({
         ...current,
-        [pageNumber]: {
-          pageNumber,
+        [annotationPageNumber]: {
+          pageNumber: annotationPageNumber,
           scene,
-          revision: (current[pageNumber]?.revision ?? 0) + 1,
+          revision: (current[annotationPageNumber]?.revision ?? 0) + 1,
           updatedAt: Date.now(),
         },
       }));
       try {
         if (isCloud)
-          await saveRemotePdfAnnotation(activeDocument.id, pageNumber, scene);
-        else await saveGuestPdfAnnotation(activeDocument.id, pageNumber, scene);
+          await saveRemotePdfAnnotation(
+            activeDocument.id,
+            annotationPageNumber,
+            scene,
+          );
+        else
+          await saveGuestPdfAnnotation(
+            activeDocument.id,
+            annotationPageNumber,
+            scene,
+          );
         setStatus("Saved");
       } catch {
         setStatus("Save failed");
       }
     },
-    [activeDocument, isCloud, pageNumber],
+    [activeDocument, isCloud],
   );
 
   const getPdfBytes = useCallback(async () => {
@@ -628,7 +864,7 @@ export default function PdfEditorApp() {
           },
           mimeType: "image/png",
           quality: 1,
-          exportPadding: 0,
+          exportPadding: EXPORT_PADDING_PX,
         });
         const image = await pdf.embedPng(await overlay.arrayBuffer());
         const page = pdf.getPage(annotationPageNumber - 1);
@@ -636,7 +872,12 @@ export default function PdfEditorApp() {
         page.drawImage(
           image,
           getPdfAnnotationPlacement({
-            bounds: [x1, y1, x2, y2],
+            bounds: [
+              x1 - EXPORT_PADDING_PX,
+              y1 - EXPORT_PADDING_PX,
+              x2 + EXPORT_PADDING_PX,
+              y2 + EXPORT_PADDING_PX,
+            ],
             scrollX: scene.appState.scrollX,
             scrollY: scene.appState.scrollY,
             zoom,
@@ -716,7 +957,10 @@ export default function PdfEditorApp() {
   };
 
   return (
-    <main className="flex min-h-screen flex-col bg-slate-100 text-slate-900">
+    <main
+      ref={mainRef}
+      className="flex h-dvh min-h-0 flex-col overflow-hidden bg-slate-100 text-slate-900"
+    >
       <input
         ref={fileInputRef}
         type="file"
@@ -731,7 +975,7 @@ export default function PdfEditorApp() {
         hidden
         onChange={importEditable}
       />
-      <header className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-4 py-2">
+      <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-4 py-2">
         <Link href="/" className="rounded px-2 py-1 text-sm hover:bg-slate-100">
           ← Notebooks
         </Link>
@@ -758,12 +1002,12 @@ export default function PdfEditorApp() {
         {isSignedIn && <UserButton />}
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-        <aside className="w-full shrink-0 border-b border-slate-200 bg-white p-3 md:w-64 md:border-r md:border-b-0">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
+        <aside className="min-h-0 w-full shrink-0 overflow-hidden border-b border-slate-200 bg-white p-3 md:w-64 md:border-r md:border-b-0">
           <h2 className="mb-2 text-xs font-semibold tracking-wide text-slate-500 uppercase">
             PDF documents
           </h2>
-          <div className="max-h-40 space-y-1 overflow-auto md:max-h-[calc(100vh-8rem)]">
+          <div className="max-h-40 space-y-1 overflow-auto md:h-[calc(100%_-_2rem)] md:max-h-none">
             {documents.map((document) => (
               <button
                 key={document.id}
@@ -794,11 +1038,11 @@ export default function PdfEditorApp() {
           </section>
         ) : (
           <Document
-            className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row"
+            className="flex h-full min-h-0 min-w-0 flex-1 overflow-hidden flex-col md:flex-row"
             file={pdfSource}
             loading={<div className="p-8">Loading PDF…</div>}
           >
-            <aside className="w-full shrink-0 overflow-auto border-b border-slate-200 bg-slate-50 p-2 md:w-40 md:border-r md:border-b-0">
+            <aside className="min-h-0 w-full shrink-0 overflow-auto border-b border-slate-200 bg-slate-50 p-2 md:w-40 md:border-r md:border-b-0">
               <div className="flex gap-2 md:flex-col">
                 {Array.from(
                   { length: activeDocument.pageCount },
@@ -809,16 +1053,108 @@ export default function PdfEditorApp() {
                     number={number}
                     isActive={number === pageNumber}
                     isAnnotated={Boolean(annotations[number])}
-                    onSelect={() => setPageNumber(number)}
+                    onSelect={() => {
+                      setPageNumber(number);
+                      if (viewMode === "continuous") {
+                        requestAnimationFrame(() =>
+                          document
+                            .getElementById(`pdf-page-${number}`)
+                            ?.scrollIntoView({
+                              behavior: "smooth",
+                              block: "start",
+                            }),
+                        );
+                      }
+                    }}
                   />
                 ))}
               </div>
             </aside>
-            <section className="min-w-0 flex-1 overflow-auto p-4">
-              <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-2">
+            <section
+              ref={observeViewer}
+              className="min-h-0 min-w-0 flex-1 overscroll-contain overflow-auto p-4"
+            >
+              <div className="sticky top-0 z-30 mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-sm">
                 <strong className="mr-auto truncate">
                   {activeDocument.title}
                 </strong>
+                <button
+                  type="button"
+                  className={`rounded border px-2 py-1 text-xs ${zoomMode === "fit-width" ? "border-sky-500 bg-sky-50 text-sky-700" : "border-slate-300"}`}
+                  onClick={() => setZoomMode("fit-width")}
+                >
+                  Fit width
+                </button>
+                <div className="flex items-center rounded border border-slate-300">
+                  <button
+                    type="button"
+                    className="px-2 py-1 text-sm hover:bg-slate-100"
+                    onClick={() => changePdfZoom(-0.1)}
+                    aria-label="Zoom out"
+                  >
+                    −
+                  </button>
+                  {isEditingZoom ? (
+                    <label className="flex items-center border-x border-slate-300 bg-white px-1 text-xs">
+                      <span className="sr-only">Custom zoom percentage</span>
+                      <input
+                        ref={zoomInputRef}
+                        type="number"
+                        inputMode="decimal"
+                        min={MIN_PDF_ZOOM * 100}
+                        max={MAX_PDF_ZOOM * 100}
+                        step="1"
+                        value={zoomInput}
+                        onChange={(event) => setZoomInput(event.target.value)}
+                        onBlur={commitZoomInput}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") event.currentTarget.blur();
+                          if (event.key === "Escape") {
+                            setIsEditingZoom(false);
+                          }
+                        }}
+                        onWheel={(event) => event.currentTarget.blur()}
+                        className="w-12 bg-transparent py-1 text-right outline-none"
+                      />
+                      <span>%</span>
+                    </label>
+                  ) : (
+                    <button
+                      type="button"
+                      className="min-w-14 border-x border-slate-300 px-2 py-1 text-xs hover:bg-slate-100"
+                      onClick={startEditingZoom}
+                      title="Enter a custom zoom percentage"
+                    >
+                      {Math.round(effectivePdfZoom * 100)}%
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="px-2 py-1 text-sm hover:bg-slate-100"
+                    onClick={() => changePdfZoom(0.1)}
+                    aria-label="Zoom in"
+                  >
+                    +
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  className="rounded border px-2 py-1 text-sm"
+                  onClick={() =>
+                    setViewMode((current) =>
+                      current === "single" ? "continuous" : "single",
+                    )
+                  }
+                >
+                  {viewMode === "single" ? "Continuous scroll" : "Single page"}
+                </button>
+                <button
+                  type="button"
+                  className="rounded border px-2 py-1 text-sm"
+                  onClick={() => void toggleFullscreen()}
+                >
+                  {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+                </button>
                 <button
                   type="button"
                   className="rounded border px-2 py-1 text-sm"
@@ -850,37 +1186,33 @@ export default function PdfEditorApp() {
                   Delete
                 </button>
               </div>
-              <div className="mx-auto w-fit overflow-hidden border border-slate-300 bg-white shadow-lg">
-                <div
-                  className="relative"
-                  style={{ width: pageSize.width, height: pageSize.height }}
-                >
-                  <Page
-                    key={pageNumber}
-                    pageNumber={pageNumber}
-                    scale={1}
-                    onLoadSuccess={(page) => {
-                      const viewport = page.getViewport({ scale: 1 });
-                      setPageSize({
-                        width: viewport.width,
-                        height: viewport.height,
-                      });
+              <div className={viewMode === "continuous" ? "space-y-6" : ""}>
+                {(viewMode === "continuous"
+                  ? Array.from(
+                      { length: activeDocument.pageCount },
+                      (_, index) => index + 1,
+                    )
+                  : [pageNumber]
+                ).map((number) => (
+                  <PdfEditablePage
+                    key={`${activeDocument.id}:${number}:${viewMode}`}
+                    documentId={activeDocument.id}
+                    pageNumber={number}
+                    scene={annotations[number]?.scene}
+                    zoom={effectivePdfZoom}
+                    lazy={viewMode === "continuous"}
+                    onPageSizeChange={(width) => {
+                      if (number === pageNumber) setActivePageWidth(width);
                     }}
-                  />
-                  <PdfAnnotationCanvas
-                    key={`${activeDocument.id}:${pageNumber}`}
-                    scene={annotations[pageNumber]?.scene}
-                    width={pageSize.width}
-                    height={pageSize.height}
                     onDraftChange={(scene) => {
                       draftScenesRef.current.set(
-                        `${activeDocument.id}:${pageNumber}`,
+                        `${activeDocument.id}:${number}`,
                         scene,
                       );
                     }}
-                    onSave={persistScene}
+                    onSave={(scene) => persistScene(number, scene)}
                   />
-                </div>
+                ))}
               </div>
             </section>
           </Document>
