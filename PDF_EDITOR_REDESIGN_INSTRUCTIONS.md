@@ -123,7 +123,7 @@ Acceptance checks:
   - The temporary viewer scale is removed before scene persistence, so it does not change saved or exported annotation coordinates.
   - The PDF workspace is constrained to the dynamic browser viewport and owns its scrolling, preventing simultaneous page-level and viewer-level scrolling.
   - A non-passive wheel capture isolates ordinary scrolling from `Ctrl/Cmd + wheel` PDF zoom and prevents browser/Excalidraw zoom leakage.
-  - Two-finger touch gestures are intercepted before Excalidraw can apply its private canvas zoom. A temporary whole-page preview follows the pinch, then commits one bounded PDF zoom when the gesture ends while keeping annotation coordinates canonical.
+  - Finger gestures are claimed by the PDF viewer before Excalidraw receives the first touch: one finger pans the PDF and two fingers preview and commit bounded PDF zoom. Apple Pencil remains pen input for annotations. This prevents iPadOS pointer capture from resizing Excalidraw's hidden scene.
   - Selecting the displayed zoom percentage opens a focused numeric field for custom values from 25% through 300%.
 - **Implemented; awaiting physical verification:** Stage 2 — Dedicated PDF workspace and fullscreen.
   - Fullscreen targets a bounded workspace containing the page-thumbnail rail, PDF viewer, viewer controls, and annotation surfaces.

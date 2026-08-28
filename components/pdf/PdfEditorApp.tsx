@@ -926,9 +926,8 @@ export default function PdfEditorApp() {
     );
   };
 
-  const stopExcalidrawTouchGesture = (
-    event: ReactPointerEvent<HTMLElement>,
-  ) => {
+  const claimPdfTouchGesture = (event: ReactPointerEvent<HTMLElement>) => {
+    event.preventDefault();
     event.stopPropagation();
     event.nativeEvent.stopImmediatePropagation();
   };
@@ -946,9 +945,14 @@ export default function PdfEditorApp() {
       x: event.clientX,
       y: event.clientY,
     });
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Pointer capture is best-effort on older iPadOS Safari releases.
+    }
+    claimPdfTouchGesture(event);
     if (activeTouchPointersRef.current.size < 2) return;
     if (suppressTouchUntilClearRef.current) {
-      stopExcalidrawTouchGesture(event);
       return;
     }
 
@@ -969,7 +973,6 @@ export default function PdfEditorApp() {
     const pagesBounds = pagesRef.current.getBoundingClientRect();
     pagesRef.current.style.transformOrigin = `${(first.x + second.x) / 2 - pagesBounds.left}px ${(first.y + second.y) / 2 - pagesBounds.top}px`;
     pagesRef.current.style.willChange = "transform";
-    stopExcalidrawTouchGesture(event);
   };
 
   const handlePdfPointerMoveCapture = (
@@ -981,12 +984,22 @@ export default function PdfEditorApp() {
     )
       return;
 
+    const previousPointer = activeTouchPointersRef.current.get(event.pointerId);
     activeTouchPointersRef.current.set(event.pointerId, {
       x: event.clientX,
       y: event.clientY,
     });
-    if (!suppressTouchUntilClearRef.current) return;
-    stopExcalidrawTouchGesture(event);
+    claimPdfTouchGesture(event);
+    if (!suppressTouchUntilClearRef.current) {
+      const viewer = viewerRef.current;
+      if (viewer && previousPointer) {
+        viewer.scrollBy({
+          left: previousPointer.x - event.clientX,
+          top: previousPointer.y - event.clientY,
+        });
+      }
+      return;
+    }
 
     const session = pinchSessionRef.current;
     if (!session?.active || activeTouchPointersRef.current.size < 2) return;
@@ -1013,7 +1026,11 @@ export default function PdfEditorApp() {
     )
       return;
 
+    claimPdfTouchGesture(event);
     activeTouchPointersRef.current.delete(event.pointerId);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
     const session = pinchSessionRef.current;
     if (session?.active && activeTouchPointersRef.current.size < 2) {
       session.active = false;
@@ -1822,7 +1839,11 @@ export default function PdfEditorApp() {
                   </div>
                   <div
                     ref={pagesRef}
-                    className={viewMode === "continuous" ? "space-y-6" : ""}
+                    className={
+                      viewMode === "continuous"
+                        ? "touch-none space-y-6"
+                        : "touch-none"
+                    }
                   >
                     {(viewMode === "continuous"
                       ? Array.from(
