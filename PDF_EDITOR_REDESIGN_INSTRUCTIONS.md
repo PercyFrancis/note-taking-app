@@ -47,7 +47,7 @@ Acceptance checks:
 ### Stage 2 — Dedicated PDF workspace and fullscreen
 
 - Create a bounded PDF workspace containing the viewer, shared annotation controls, and viewer controls.
-- Make fullscreen target that workspace only.
+- Make fullscreen a viewport-covering workspace mode rather than invoking device/browser fullscreen.
 - Keep PDF zoom and view-mode controls available in fullscreen.
 - Restore focus and scroll position when fullscreen exits.
 
@@ -107,7 +107,7 @@ Acceptance checks:
 
 - **Fit width** is the default PDF zoom. A dedicated **100%** option remains available.
 - `Ctrl/Cmd + wheel` zooms in both single-page and continuous modes. An unmodified wheel scrolls normally and must never pan the Excalidraw scene independently.
-- Fullscreen contains the PDF viewer, viewer controls, shared drawing toolbar, and a collapsible page-thumbnail rail. It excludes the application header and PDF document library.
+- Fullscreen uses the same fixed viewport-overlay pattern as drawing-cell fullscreen. It contains the PDF viewer, viewer controls, shared drawing toolbar, and a collapsible page-thumbnail rail; it covers the application header and PDF document library without hiding browser or device chrome.
 - The shared annotation toolbar can dock to the top, left, right, or bottom so it can be moved away from the area being annotated.
 - The sticky-sidebar request applies to the main note-taker notebook/folder sidebar, not the PDF editor sidebar. Desktop behavior changes; mobile remains responsive.
 
@@ -127,12 +127,11 @@ Acceptance checks:
   - Native non-passive `touchstart`, `touchmove`, and Safari `gesture*` guards prevent a PDF-page pinch from becoming webpage-level zoom on iPadOS.
   - Selecting the displayed zoom percentage opens a focused numeric field for custom values from 25% through 300%.
 - **Implemented; awaiting physical verification:** Stage 2 — Dedicated PDF workspace and fullscreen.
-  - Fullscreen targets a bounded workspace containing the page-thumbnail rail, PDF viewer, viewer controls, and annotation surfaces.
-  - The application header and PDF document library remain outside fullscreen.
+  - Fullscreen fixes a bounded workspace containing the page-thumbnail rail, PDF viewer, viewer controls, and annotation surfaces over the viewport, matching drawing-cell fullscreen behavior.
+  - The application header and PDF document library remain behind the workspace overlay, while browser and device chrome remain visible.
   - The page-thumbnail rail can be collapsed and restored from the viewer controls, including while fullscreen.
   - Entering and exiting fullscreen preserve the latest viewer scroll position. Exiting returns keyboard focus to the control that opened fullscreen.
-  - Fullscreen state follows the browser Fullscreen API, so pressing `Escape` restores the normal workspace and control label.
-  - Fullscreen failures are handled without leaving the controls in an incorrect state.
+  - Fullscreen does not invoke the browser Fullscreen API. A dedicated `Escape` handler restores the normal workspace and control label.
 - **Implemented; awaiting physical verification:** Stage 3 — External shared annotation toolbar.
   - One workspace-level annotation toolbar replaces the persistent Excalidraw toolbar previously rendered above every PDF page.
   - The toolbar provides selection, shape, arrow, line, free-draw, text, and eraser tools plus stroke color, fill color, no-fill, width, stroke style, fill style, and edge style controls.

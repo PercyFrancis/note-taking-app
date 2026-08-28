@@ -165,14 +165,6 @@ body {
   background: color-mix(in srgb, var(--color-slate-100) 92%, white);
 }
 
-.pdf-workspace:fullscreen {
-  width: 100vw;
-  height: 100dvh;
-  max-width: none;
-  max-height: none;
-  background: var(--color-slate-100);
-}
-
 .pdf-annotation-layer,
 .pdf-annotation-layer .excalidraw,
 .pdf-annotation-layer .excalidraw .layer-ui__wrapper {

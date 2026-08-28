@@ -726,7 +726,6 @@ export default function PdfEditorApp() {
   const objectUrlRef = useRef<string | null>(null);
   const draftScenesRef = useRef(new Map<string, string>());
   const pageWidthsRef = useRef(new Map<number, number>());
-  const workspaceRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<HTMLElement>(null);
   const pagesRef = useRef<HTMLDivElement>(null);
   const continuousScrollFrameRef = useRef<number | null>(null);
@@ -747,7 +746,7 @@ export default function PdfEditorApp() {
   const previousPageNumberRef = useRef(pageNumber);
   const fullscreenReturnFocusRef = useRef<HTMLElement | null>(null);
   const viewerScrollRef = useRef({ left: 0, top: 0 });
-  const wasWorkspaceFullscreenRef = useRef(false);
+  const wasViewportFullscreenRef = useRef(false);
   const viewerResizeObserverRef = useRef<ResizeObserver | null>(null);
   const viewerWheelListenerRef = useRef<((event: WheelEvent) => void) | null>(
     null,
@@ -948,48 +947,44 @@ export default function PdfEditorApp() {
     };
   }, []);
 
-  useEffect(() => {
-    const updateFullscreenState = () => {
-      const nextIsFullscreen =
-        document.fullscreenElement === workspaceRef.current;
-      const wasFullscreen = wasWorkspaceFullscreenRef.current;
-      wasWorkspaceFullscreenRef.current = nextIsFullscreen;
-      setIsFullscreen(nextIsFullscreen);
+  useLayoutEffect(() => {
+    const wasFullscreen = wasViewportFullscreenRef.current;
+    wasViewportFullscreenRef.current = isFullscreen;
+    if (wasFullscreen === isFullscreen) return;
 
-      requestAnimationFrame(() => {
-        viewerRef.current?.scrollTo(viewerScrollRef.current);
-        if (wasFullscreen && !nextIsFullscreen) {
-          fullscreenReturnFocusRef.current?.focus({ preventScroll: true });
-          fullscreenReturnFocusRef.current = null;
-        }
-      });
-    };
-    document.addEventListener("fullscreenchange", updateFullscreenState);
-    return () =>
-      document.removeEventListener("fullscreenchange", updateFullscreenState);
-  }, []);
-
-  const toggleFullscreen = async () => {
-    const workspace = workspaceRef.current;
-    if (!workspace) return;
-
-    try {
-      if (document.fullscreenElement === workspace) {
-        await document.exitFullscreen();
-      } else {
-        fullscreenReturnFocusRef.current =
-          document.activeElement instanceof HTMLElement
-            ? document.activeElement
-            : null;
-        viewerScrollRef.current = {
-          left: viewerRef.current?.scrollLeft ?? 0,
-          top: viewerRef.current?.scrollTop ?? 0,
-        };
-        await workspace.requestFullscreen();
+    const frame = requestAnimationFrame(() => {
+      viewerRef.current?.scrollTo(viewerScrollRef.current);
+      if (wasFullscreen && !isFullscreen) {
+        fullscreenReturnFocusRef.current?.focus({ preventScroll: true });
+        fullscreenReturnFocusRef.current = null;
       }
-    } catch {
-      setStatus("Fullscreen is unavailable in this browser");
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [isFullscreen]);
+
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setIsFullscreen(false);
+    };
+    document.addEventListener("keydown", closeOnEscape, true);
+    return () => document.removeEventListener("keydown", closeOnEscape, true);
+  }, [isFullscreen]);
+
+  const toggleFullscreen = () => {
+    if (!isFullscreen) {
+      fullscreenReturnFocusRef.current =
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
+      viewerScrollRef.current = {
+        left: viewerRef.current?.scrollLeft ?? 0,
+        top: viewerRef.current?.scrollTop ?? 0,
+      };
     }
+    setIsFullscreen((current) => !current);
   };
 
   const changePdfZoom = (change: number) => {
@@ -1708,8 +1703,9 @@ export default function PdfEditorApp() {
           </section>
         ) : (
           <div
-            ref={workspaceRef}
-            className="pdf-workspace flex h-full min-h-0 min-w-0 flex-1 overflow-hidden bg-slate-100"
+            className={`pdf-workspace flex min-h-0 min-w-0 flex-1 overflow-hidden bg-slate-100 ${
+              isFullscreen ? "fixed inset-0 z-50" : "h-full"
+            }`}
           >
             <Document
               className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:flex-row"
@@ -1875,7 +1871,7 @@ export default function PdfEditorApp() {
                     <button
                       type="button"
                       className="rounded border px-2 py-1 text-sm"
-                      onClick={() => void toggleFullscreen()}
+                      onClick={toggleFullscreen}
                     >
                       {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
                     </button>
