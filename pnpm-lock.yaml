@@ -20,7 +20,7 @@ importers:
         specifier: ^0.4.0
         version: 0.4.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@excalidraw/excalidraw':
-        specifier: ^0.18.1
+        specifier: 0.18.1
         version: 0.18.1(patch_hash=3ae2eb8c7cb76b154973ca1bac00b46668ef947b414435416b0ac735798f484a)(@types/react-dom@19.2.3(@types/react@19.2.15))(@types/react@19.2.15)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@mermaid-js/parser':
         specifier: 1.2.1

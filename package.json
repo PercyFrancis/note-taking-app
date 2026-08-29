@@ -2,7 +2,7 @@
   "name": "note-taking-app",
   "version": "0.1.0",
   "private": true,
-  "packageManager": "pnpm@10.34.0",
+  "packageManager": "pnpm@10.34.5",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -18,7 +18,7 @@
   "dependencies": {
     "@clerk/nextjs": "^7.5.7",
     "@dnd-kit/react": "^0.4.0",
-    "@excalidraw/excalidraw": "^0.18.1",
+    "@excalidraw/excalidraw": "0.18.1",
     "@mermaid-js/parser": "1.2.1",
     "@neondatabase/serverless": "^1.1.0",
     "@next/env": "^16.2.9",

@@ -1,7 +1,9 @@
 packages:
   - '.'
 
-nodeLinker: hoisted
+# The hoisted linker has an intermittent cold-install race with patchedDependencies.
+# Keep package links isolated so the Excalidraw patch is applied deterministically.
+nodeLinker: isolated
 
 allowBuilds:
   sharp: true
