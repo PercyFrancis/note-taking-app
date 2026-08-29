@@ -25,6 +25,12 @@ import {
   sanitizeImageFilename,
 } from "@/lib/attachments";
 import { saveGuestImage } from "@/lib/client/guest-storage";
+import {
+  normalizeNewConstantWidthStroke,
+  PEN_STROKE_WIDTHS,
+  type PenPressureMode,
+  type PenStrokeWidth,
+} from "@/lib/excalidraw-pen";
 import type {
   ExcalidrawCell,
   ExcalidrawImageInsertionRequest,
@@ -71,6 +77,7 @@ interface PendingSceneSnapshot {
 interface ExcalidrawCellEditorProps {
   cell: ExcalidrawCell;
   isDarkMode: boolean;
+  isTouchDrawingEnabled: boolean;
   imageInsertion: ExcalidrawImageInsertionRequest | null;
   flushRef: { current: ExcalidrawSceneFlush | null };
   onChange: (drawing: string) => void;
@@ -191,6 +198,7 @@ function parseScene(drawing: string | null): ExcalidrawInitialDataState | null {
 export default function ExcalidrawCellEditor({
   cell,
   isDarkMode,
+  isTouchDrawingEnabled,
   imageInsertion,
   flushRef,
   onChange,
@@ -201,9 +209,22 @@ export default function ExcalidrawCellEditor({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [imageUploadError, setImageUploadError] = useState("");
+  const [penStrokeWidth, setPenStrokeWidth] = useState<PenStrokeWidth>(1);
+  const [penPressureMode, setPenPressureMode] =
+    useState<PenPressureMode>("dynamic");
   const [excalidrawApi, setExcalidrawApi] =
     useState<ExcalidrawImperativeAPI | null>(null);
-  const [initialData] = useState(() => parseScene(cell.drawing));
+  const [initialData] = useState(() => {
+    const scene = parseScene(cell.drawing);
+    return {
+      ...(scene ?? {}),
+      appState: {
+        ...(scene?.appState ?? {}),
+        penMode: !isTouchDrawingEnabled,
+        penDetected: true,
+      },
+    } satisfies ExcalidrawInitialDataState;
+  });
   const onChangeRef = useRef(onChange);
   const userIdRef = useRef(userId);
   const isMountedRef = useRef(true);
@@ -235,6 +256,28 @@ export default function ExcalidrawCellEditor({
   useEffect(() => {
     userIdRef.current = userId;
   }, [userId]);
+
+  useEffect(() => {
+    if (!excalidrawApi) return;
+    const expectedPenMode = !isTouchDrawingEnabled;
+    if (
+      excalidrawApi.getAppState().penMode === expectedPenMode &&
+      excalidrawApi.getAppState().penDetected
+    )
+      return;
+    excalidrawApi.updateScene({
+      appState: { penMode: expectedPenMode, penDetected: true },
+      captureUpdate: "NEVER",
+    });
+  }, [excalidrawApi, isTouchDrawingEnabled]);
+
+  useEffect(() => {
+    if (!excalidrawApi) return;
+    excalidrawApi.updateScene({
+      appState: { currentItemStrokeWidth: penStrokeWidth },
+      captureUpdate: "NEVER",
+    });
+  }, [excalidrawApi, penStrokeWidth]);
 
   useEffect(() => {
     lastSerializedSceneRef.current = cell.drawing;
@@ -633,7 +676,7 @@ export default function ExcalidrawCellEditor({
       }
     >
       <div
-        className={`flex items-center justify-between gap-3 ${
+        className={`flex flex-wrap items-center justify-between gap-3 ${
           isFullscreen ? "border-b border-slate-200 px-4 py-2" : "mb-2"
         }`}
       >
@@ -649,6 +692,40 @@ export default function ExcalidrawCellEditor({
               {imageUploadError}
             </p>
           )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-1 text-xs text-slate-600">
+            Pen size
+            <select
+              value={penStrokeWidth}
+              className="rounded border border-slate-300 bg-white px-2 py-1"
+              onChange={(event) => {
+                const width = Number(event.target.value) as PenStrokeWidth;
+                setPenStrokeWidth(width);
+                excalidrawApi?.setActiveTool({ type: "freedraw" });
+              }}
+            >
+              {PEN_STROKE_WIDTHS.map((width) => (
+                <option key={width} value={width}>
+                  {width} px
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-1 text-xs text-slate-600">
+            Pen
+            <select
+              value={penPressureMode}
+              className="rounded border border-slate-300 bg-white px-2 py-1"
+              onChange={(event) => {
+                setPenPressureMode(event.target.value as PenPressureMode);
+                excalidrawApi?.setActiveTool({ type: "freedraw" });
+              }}
+            >
+              <option value="dynamic">Dynamic</option>
+              <option value="constant">Constant width</option>
+            </select>
+          </label>
         </div>
         <button
           type="button"
@@ -672,7 +749,39 @@ export default function ExcalidrawCellEditor({
           initialData={initialData}
           theme={isDarkMode ? "dark" : "light"}
           excalidrawAPI={setExcalidrawApi}
-          onChange={persistScene}
+          onChange={(elements, appState, files) => {
+            persistScene(elements, appState, files);
+            const expectedPenMode = !isTouchDrawingEnabled;
+            if (appState.penMode === expectedPenMode && appState.penDetected)
+              return;
+            queueMicrotask(() => {
+              const api = excalidrawApi;
+              if (
+                !api ||
+                (api.getAppState().penMode === expectedPenMode &&
+                  api.getAppState().penDetected)
+              )
+                return;
+              api.updateScene({
+                appState: { penMode: expectedPenMode, penDetected: true },
+                captureUpdate: "NEVER",
+              });
+            });
+          }}
+          onPointerUp={(activeTool, pointerDownState) => {
+            if (
+              activeTool.type === "freedraw" &&
+              penPressureMode === "constant" &&
+              excalidrawApi
+            ) {
+              window.requestAnimationFrame(() => {
+                normalizeNewConstantWidthStroke(
+                  excalidrawApi,
+                  pointerDownState,
+                );
+              });
+            }
+          }}
           autoFocus={false}
           handleKeyboardGlobally={false}
           UIOptions={EXCALIDRAW_UI_OPTIONS}

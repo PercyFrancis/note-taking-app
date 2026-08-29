@@ -75,7 +75,7 @@ export class AttachmentReferenceError extends Error {
   references: ImageReference[];
 
   constructor(references: ImageReference[]) {
-    super("This image is still referenced by one or more cells");
+    super("This image is still referenced by one or more documents");
     this.references = references;
   }
 }
@@ -97,11 +97,16 @@ export async function permanentlyDeleteUploadedImage(
     const references = data.references.filter(
       (reference): reference is ImageReference =>
         isRecord(reference) &&
-        typeof reference.notebookTitle === "string" &&
-        typeof reference.cellId === "string" &&
-        (reference.cellType === "text" ||
-          reference.cellType === "excalidraw") &&
-        typeof reference.cellNumber === "number",
+        ((reference.kind === "notebook" &&
+          typeof reference.notebookTitle === "string" &&
+          typeof reference.cellId === "string" &&
+          (reference.cellType === "text" ||
+            reference.cellType === "excalidraw") &&
+          typeof reference.cellNumber === "number") ||
+          (reference.kind === "pdf" &&
+            typeof reference.pdfTitle === "string" &&
+            typeof reference.documentId === "string" &&
+            typeof reference.pageNumber === "number")),
     );
     throw new AttachmentReferenceError(references);
   }

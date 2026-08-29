@@ -1,5 +1,11 @@
 "use client";
 
+import {
+  PEN_STROKE_WIDTHS,
+  type PenPressureMode,
+  type PenStrokeWidth,
+} from "@/lib/excalidraw-pen";
+
 export type PdfAnnotationTool =
   | "selection"
   | "rectangle"
@@ -19,7 +25,8 @@ export interface PdfAnnotationToolbarState {
   strokeColor: string;
   backgroundColor: string;
   fillStyle: "hachure" | "cross-hatch" | "solid";
-  strokeWidth: 1 | 2 | 4;
+  strokeWidth: PenStrokeWidth;
+  pressureMode: PenPressureMode;
   strokeStyle: "solid" | "dashed" | "dotted";
   roughness: 0 | 1 | 2;
   opacity: number;
@@ -38,6 +45,7 @@ export const DEFAULT_PDF_ANNOTATION_TOOLBAR_STATE: PdfAnnotationToolbarState = {
   backgroundColor: "transparent",
   fillStyle: "hachure",
   strokeWidth: 2,
+  pressureMode: "dynamic",
   strokeStyle: "solid",
   roughness: 1,
   opacity: 100,
@@ -71,6 +79,8 @@ export function PdfAnnotationToolbar({
   activePage,
   onChange,
   onDockChange,
+  onInsertImage,
+  onOpenImageLibrary,
   onUndo,
   onRedo,
 }: {
@@ -79,6 +89,8 @@ export function PdfAnnotationToolbar({
   activePage: number;
   onChange: (change: Partial<PdfAnnotationToolbarState>) => void;
   onDockChange: (dock: PdfToolbarDock) => void;
+  onInsertImage: () => void;
+  onOpenImageLibrary: () => void;
   onUndo: () => void;
   onRedo: () => void;
 }) {
@@ -126,6 +138,23 @@ export function PdfAnnotationToolbar({
           </button>
         ))}
       </div>
+
+      <button
+        type="button"
+        className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100"
+        onClick={onInsertImage}
+        title={`Upload an image to page ${activePage}`}
+      >
+        Upload image
+      </button>
+      <button
+        type="button"
+        className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100"
+        onClick={onOpenImageLibrary}
+        title={`Insert an existing library image into page ${activePage}`}
+      >
+        Image library
+      </button>
 
       <label
         className={`flex items-center gap-1 text-xs ${isVertical ? "justify-between" : ""}`}
@@ -176,16 +205,37 @@ export function PdfAnnotationToolbar({
           value={state.strokeWidth}
           onChange={(event) =>
             onChange({
-              strokeWidth: Number(event.target.value) as 1 | 2 | 4,
+              strokeWidth: Number(event.target.value) as PenStrokeWidth,
             })
           }
           title="Stroke width"
         >
-          <option value={1}>Thin</option>
-          <option value={2}>Medium</option>
-          <option value={4}>Thick</option>
+          {PEN_STROKE_WIDTHS.map((width) => (
+            <option key={width} value={width}>
+              {width} px
+            </option>
+          ))}
         </select>
       </label>
+
+      {state.tool === "freedraw" && (
+        <label className="text-xs">
+          <span className="sr-only">Pen pressure behavior</span>
+          <select
+            className={fieldClass}
+            value={state.pressureMode}
+            onChange={(event) =>
+              onChange({
+                pressureMode: event.target.value as PenPressureMode,
+              })
+            }
+            title="Pen pressure behavior"
+          >
+            <option value="dynamic">Dynamic pen</option>
+            <option value="constant">Constant-width pen</option>
+          </select>
+        </label>
+      )}
 
       <label className="text-xs">
         <span className="sr-only">Stroke style</span>

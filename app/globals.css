@@ -165,6 +165,10 @@ body {
   background: color-mix(in srgb, var(--color-slate-100) 92%, white);
 }
 
+.pdf-shared-annotation-toolbar {
+  touch-action: pan-x pan-y;
+}
+
 .pdf-annotation-layer,
 .pdf-annotation-layer .excalidraw,
 .pdf-annotation-layer .excalidraw .layer-ui__wrapper {

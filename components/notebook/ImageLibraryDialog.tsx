@@ -30,8 +30,10 @@ interface ImageLibraryDialogProps {
   notebooks: Notebook[];
   selectedTextCellId: string | null;
   selectedExcalidrawCellId: string | null;
-  onInsertIntoText: (cellId: string, markdown: string) => void;
-  onInsertIntoDrawing: (cellId: string, image: UploadedImage) => void;
+  selectedPdfPage?: number | null;
+  onInsertIntoText?: (cellId: string, markdown: string) => void;
+  onInsertIntoDrawing?: (cellId: string, image: UploadedImage) => void;
+  onInsertIntoPdf?: (image: UploadedImage) => void;
   onClose: () => void;
   storageMode: "cloud" | "local";
 }
@@ -56,8 +58,10 @@ export default function ImageLibraryDialog({
   notebooks,
   selectedTextCellId,
   selectedExcalidrawCellId,
+  selectedPdfPage = null,
   onInsertIntoText,
   onInsertIntoDrawing,
+  onInsertIntoPdf,
   onClose,
   storageMode,
 }: ImageLibraryDialogProps) {
@@ -275,13 +279,14 @@ export default function ImageLibraryDialog({
       if (error instanceof AttachmentReferenceError) {
         const locations = error.references
           .slice(0, 4)
-          .map(
-            (reference) =>
-              `${reference.notebookTitle}, cell ${reference.cellNumber}`,
+          .map((reference) =>
+            reference.kind === "pdf"
+              ? `${reference.pdfTitle}, page ${reference.pageNumber}`
+              : `${reference.notebookTitle}, cell ${reference.cellNumber}`,
           )
           .join("; ");
         setActionStatus(
-          `Deletion blocked because the image is still used in ${error.references.length} ${error.references.length === 1 ? "cell" : "cells"}${locations ? `: ${locations}` : ""}.`,
+          `Deletion blocked because the image is still used in ${error.references.length} ${error.references.length === 1 ? "place" : "places"}${locations ? `: ${locations}` : ""}.`,
         );
       } else {
         setActionStatus("Could not permanently delete the image.");
@@ -382,12 +387,14 @@ export default function ImageLibraryDialog({
             ))}
           </div>
 
-          {!selectedTextCellId && !selectedExcalidrawCellId && (
-            <p className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
-              Select a text or Excalidraw cell to enable image insertion.
-              Preview and copy actions are still available.
-            </p>
-          )}
+          {!selectedTextCellId &&
+            !selectedExcalidrawCellId &&
+            !selectedPdfPage && (
+              <p className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                Select an insertion target to enable image insertion. Preview
+                and copy actions are still available.
+              </p>
+            )}
           {isTruncated && (
             <p className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
               Only the first 20,000 images could be loaded. A database-backed
@@ -565,36 +572,50 @@ export default function ImageLibraryDialog({
                             >
                               Rename
                             </button>
-                            <button
-                              type="button"
-                              className={smallSecondaryButtonClass}
-                              disabled={!selectedTextCellId || isBusy}
-                              onClick={() => {
-                                if (selectedTextCellId) {
-                                  onInsertIntoText(
-                                    selectedTextCellId,
-                                    markdown,
-                                  );
-                                }
-                              }}
-                            >
-                              Insert into text
-                            </button>
-                            <button
-                              type="button"
-                              className={smallSecondaryButtonClass}
-                              disabled={!selectedExcalidrawCellId || isBusy}
-                              onClick={() => {
-                                if (selectedExcalidrawCellId) {
-                                  onInsertIntoDrawing(
-                                    selectedExcalidrawCellId,
-                                    image,
-                                  );
-                                }
-                              }}
-                            >
-                              Insert into drawing
-                            </button>
+                            {onInsertIntoText && (
+                              <button
+                                type="button"
+                                className={smallSecondaryButtonClass}
+                                disabled={!selectedTextCellId || isBusy}
+                                onClick={() => {
+                                  if (selectedTextCellId) {
+                                    onInsertIntoText(
+                                      selectedTextCellId,
+                                      markdown,
+                                    );
+                                  }
+                                }}
+                              >
+                                Insert into text
+                              </button>
+                            )}
+                            {onInsertIntoDrawing && (
+                              <button
+                                type="button"
+                                className={smallSecondaryButtonClass}
+                                disabled={!selectedExcalidrawCellId || isBusy}
+                                onClick={() => {
+                                  if (selectedExcalidrawCellId) {
+                                    onInsertIntoDrawing(
+                                      selectedExcalidrawCellId,
+                                      image,
+                                    );
+                                  }
+                                }}
+                              >
+                                Insert into drawing
+                              </button>
+                            )}
+                            {onInsertIntoPdf && (
+                              <button
+                                type="button"
+                                className={smallSecondaryButtonClass}
+                                disabled={!selectedPdfPage || isBusy}
+                                onClick={() => onInsertIntoPdf(image)}
+                              >
+                                Insert into PDF page {selectedPdfPage}
+                              </button>
+                            )}
                             <button
                               type="button"
                               className={smallDangerButtonClass}

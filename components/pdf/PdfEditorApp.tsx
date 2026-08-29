@@ -4,10 +4,15 @@ import "@excalidraw/excalidraw/index.css";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 import { UserButton, useAuth } from "@clerk/nextjs";
-import type { OrderedExcalidrawElement } from "@excalidraw/excalidraw/element/types";
+import type {
+  FileId,
+  OrderedExcalidrawElement,
+} from "@excalidraw/excalidraw/element/types";
 import type {
   AppState,
+  BinaryFileData,
   BinaryFiles,
+  DataURL,
   ExcalidrawImperativeAPI,
   ExcalidrawInitialDataState,
 } from "@excalidraw/excalidraw/types";
@@ -25,12 +30,20 @@ import {
   useState,
 } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
+import ImageLibraryDialog from "@/components/notebook/ImageLibraryDialog";
+import SettingsDialog from "@/components/notebook/SettingsDialog";
 import {
   DEFAULT_PDF_ANNOTATION_TOOLBAR_STATE,
   PdfAnnotationToolbar,
   type PdfAnnotationToolbarState,
   type PdfToolbarDock,
 } from "@/components/pdf/PdfAnnotationToolbar";
+import {
+  createPrivateImageUrl,
+  isAllowedImageContentType,
+  MAX_IMAGE_SIZE_BYTES,
+  sanitizeImageFilename,
+} from "@/lib/attachments";
 import {
   createGuestPdfDocument,
   deleteGuestPdfDocument,
@@ -49,6 +62,15 @@ import {
   saveRemotePdfAnnotation,
 } from "@/lib/client/pdf-api";
 import {
+  loadRemoteSettings,
+  saveRemoteSettings,
+} from "@/lib/client/settings-api";
+import {
+  normalizeNewConstantWidthStroke,
+  PEN_STROKE_WIDTHS,
+  type PenStrokeWidth,
+} from "@/lib/excalidraw-pen";
+import {
   DEFAULT_PDF_MAX_PAGES,
   DEFAULT_PDF_MAX_UPLOAD_BYTES,
   getGuestPdfLimits,
@@ -57,6 +79,12 @@ import {
   type PdfDocumentRecord,
   sanitizePdfFilename,
 } from "@/lib/pdf";
+import {
+  applyAppearance,
+  loadLocalSettings,
+  saveLocalSettings,
+} from "@/lib/settings";
+import type { UploadedImage, UserSettings } from "@/lib/types";
 import { createId } from "@/lib/utils";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
@@ -98,6 +126,34 @@ const ANNOTATION_TOOLBAR_GUTTER_PX = 32;
 const MIN_PDF_ZOOM = 0.25;
 const MAX_PDF_ZOOM = 3;
 
+function loadImageDimensions(source: File | string) {
+  return new Promise<{ width: number; height: number }>((resolve, reject) => {
+    const shouldRevokeUrl = source instanceof File;
+    const url = shouldRevokeUrl ? URL.createObjectURL(source) : source;
+    const image = new Image();
+    image.onload = () => {
+      if (shouldRevokeUrl) URL.revokeObjectURL(url);
+      resolve({
+        width: image.naturalWidth || 1,
+        height: image.naturalHeight || 1,
+      });
+    };
+    image.onerror = () => {
+      if (shouldRevokeUrl) URL.revokeObjectURL(url);
+      reject(new Error("Could not read this image."));
+    };
+    image.src = url;
+  });
+}
+
+function getImageContentType(filename: string): BinaryFileData["mimeType"] {
+  const extension = filename.split(".").pop()?.toLowerCase();
+  if (extension === "jpg" || extension === "jpeg") return "image/jpeg";
+  if (extension === "webp") return "image/webp";
+  if (extension === "gif") return "image/gif";
+  return "image/png";
+}
+
 function parseScene(scene: string | undefined): StoredPdfScene | null {
   if (!scene) return null;
   try {
@@ -127,6 +183,7 @@ function annotationInitialData(
   scene: StoredPdfScene | null,
   viewerZoom: number,
   toolbarState: PdfAnnotationToolbarState,
+  isTouchDrawingEnabled: boolean,
 ): ExcalidrawInitialDataState {
   const canonicalZoom =
     scene?.appState.zoom ?? ({ value: 1 } as AppState["zoom"]);
@@ -154,6 +211,8 @@ function annotationInitialData(
       currentItemStartArrowhead: toolbarState.startArrowhead,
       currentItemEndArrowhead: toolbarState.endArrowhead,
       viewBackgroundColor: "transparent",
+      penMode: !isTouchDrawingEnabled,
+      penDetected: true,
     },
   };
 }
@@ -314,11 +373,12 @@ function toolbarStateFromAppState(
     fillStyle:
       (appState.currentItemFillStyle as PdfAnnotationToolbarState["fillStyle"]) ??
       fallback.fillStyle,
-    strokeWidth: ([1, 2, 4] as const).includes(
-      appState.currentItemStrokeWidth as 1 | 2 | 4,
+    strokeWidth: PEN_STROKE_WIDTHS.includes(
+      appState.currentItemStrokeWidth as PenStrokeWidth,
     )
-      ? (appState.currentItemStrokeWidth as 1 | 2 | 4)
+      ? (appState.currentItemStrokeWidth as PenStrokeWidth)
       : fallback.strokeWidth,
+    pressureMode: fallback.pressureMode,
     strokeStyle:
       (appState.currentItemStrokeStyle as PdfAnnotationToolbarState["strokeStyle"]) ??
       fallback.strokeStyle,
@@ -357,6 +417,7 @@ function PdfAnnotationCanvas({
   height,
   viewerZoom,
   toolbarState,
+  isTouchDrawingEnabled,
   onDraftChange,
   onSave,
   onToolbarStateChange,
@@ -367,6 +428,7 @@ function PdfAnnotationCanvas({
   height: number;
   viewerZoom: number;
   toolbarState: PdfAnnotationToolbarState;
+  isTouchDrawingEnabled: boolean;
   onDraftChange: (scene: string) => void;
   onSave: (scene: string) => Promise<void>;
   onToolbarStateChange: (state: PdfAnnotationToolbarState) => void;
@@ -395,8 +457,9 @@ function PdfAnnotationCanvas({
         parseScene(latestRef.current || initialSceneRef.current),
         viewerZoom,
         toolbarStateRef.current,
+        isTouchDrawingEnabled,
       ),
-    [viewerZoom],
+    [isTouchDrawingEnabled, viewerZoom],
   );
   onSaveRef.current = onSave;
   onDraftChangeRef.current = onDraftChange;
@@ -409,6 +472,21 @@ function PdfAnnotationCanvas({
     const api = apiRef.current;
     if (api) applyPdfToolbarState(api, toolbarState);
   }, [toolbarState]);
+
+  useEffect(() => {
+    const api = apiRef.current;
+    if (!api) return;
+    const expectedPenMode = !isTouchDrawingEnabled;
+    if (
+      api.getAppState().penMode === expectedPenMode &&
+      api.getAppState().penDetected
+    )
+      return;
+    api.updateScene({
+      appState: { penMode: expectedPenMode, penDetected: true },
+      captureUpdate: "NEVER",
+    });
+  }, [isTouchDrawingEnabled]);
 
   const queueSave = useCallback((next: string) => {
     pendingSaveRef.current = next;
@@ -480,6 +558,22 @@ function PdfAnnotationCanvas({
           },
         }}
         onChange={(elements, appState, files) => {
+          const expectedPenMode = !isTouchDrawingEnabled;
+          if (appState.penMode !== expectedPenMode || !appState.penDetected) {
+            queueMicrotask(() => {
+              const api = apiRef.current;
+              if (
+                !api ||
+                (api.getAppState().penMode === expectedPenMode &&
+                  api.getAppState().penDetected)
+              )
+                return;
+              api.updateScene({
+                appState: { penMode: expectedPenMode, penDetected: true },
+                captureUpdate: "NEVER",
+              });
+            });
+          }
           const nextToolbarState = toolbarStateFromAppState(
             appState,
             toolbarStateRef.current,
@@ -511,6 +605,18 @@ function PdfAnnotationCanvas({
             timerRef.current = null;
             queueSave(next);
           }, SAVE_DELAY_MS);
+        }}
+        onPointerUp={(activeTool, pointerDownState) => {
+          if (
+            activeTool.type === "freedraw" &&
+            toolbarStateRef.current.pressureMode === "constant" &&
+            apiRef.current
+          ) {
+            const api = apiRef.current;
+            window.requestAnimationFrame(() => {
+              normalizeNewConstantWidthStroke(api, pointerDownState);
+            });
+          }
         }}
       />
     </div>
@@ -589,6 +695,7 @@ function PdfEditablePage({
   lazy,
   getIntersectionRoot,
   toolbarState,
+  isTouchDrawingEnabled,
   onPageSizeChange,
   onActivate,
   onDraftChange,
@@ -603,6 +710,7 @@ function PdfEditablePage({
   lazy: boolean;
   getIntersectionRoot: () => HTMLElement | null;
   toolbarState: PdfAnnotationToolbarState;
+  isTouchDrawingEnabled: boolean;
   onPageSizeChange?: (width: number, height: number) => void;
   onActivate: () => void;
   onDraftChange: (scene: string) => void;
@@ -678,6 +786,7 @@ function PdfEditablePage({
                 height={pageSize.height * zoom}
                 viewerZoom={zoom}
                 toolbarState={toolbarState}
+                isTouchDrawingEnabled={isTouchDrawingEnabled}
                 onDraftChange={onDraftChange}
                 onSave={onSave}
                 onToolbarStateChange={onToolbarStateChange}
@@ -720,8 +829,15 @@ export default function PdfEditorApp() {
   const [pdfSource, setPdfSource] = useState<string | Blob | null>(null);
   const [status, setStatus] = useState("Loading…");
   const [isBusy, setIsBusy] = useState(false);
+  const [isImageLibraryOpen, setIsImageLibraryOpen] = useState(false);
+  const [settings, setSettings] = useState<UserSettings>(loadLocalSettings);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsSaveStatus, setSettingsSaveStatus] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const projectInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const zoomInputRef = useRef<HTMLInputElement>(null);
   const objectUrlRef = useRef<string | null>(null);
   const draftScenesRef = useRef(new Map<string, string>());
@@ -753,9 +869,68 @@ export default function PdfEditorApp() {
   );
   const viewerWheelHandlerRef = useRef<(event: WheelEvent) => void>(() => {});
   const viewerTouchCleanupRef = useRef<(() => void) | null>(null);
+  const workspaceTouchCleanupRef = useRef<(() => void) | null>(null);
+  const settingsChangedRef = useRef(false);
+  const settingsSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   const activeDocument =
     documents.find((document) => document.id === activeId) ?? null;
+
+  useEffect(() => {
+    applyAppearance(settings);
+  }, [settings]);
+
+  useEffect(() => {
+    if (!isLoaded || !isCloud) return;
+    let cancelled = false;
+    void loadRemoteSettings()
+      .then((remoteSettings) => {
+        if (cancelled || settingsChangedRef.current) return;
+        setSettings(remoteSettings);
+        saveLocalSettings(remoteSettings);
+        setSettingsSaveStatus("saved");
+      })
+      .catch(() => {
+        if (!cancelled) setSettingsSaveStatus("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isCloud, isLoaded]);
+
+  useEffect(
+    () => () => {
+      if (settingsSaveTimerRef.current) {
+        clearTimeout(settingsSaveTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  const updateSettings = (nextSettings: UserSettings) => {
+    settingsChangedRef.current = true;
+    setSettings(nextSettings);
+    saveLocalSettings(nextSettings);
+    applyAppearance(nextSettings);
+    if (!isCloud) {
+      setSettingsSaveStatus("saved");
+      return;
+    }
+    setSettingsSaveStatus("saving");
+    if (settingsSaveTimerRef.current) {
+      clearTimeout(settingsSaveTimerRef.current);
+    }
+    settingsSaveTimerRef.current = setTimeout(async () => {
+      try {
+        await saveRemoteSettings(nextSettings);
+        setSettingsSaveStatus("saved");
+      } catch {
+        setSettingsSaveStatus("error");
+      }
+    }, 400);
+  };
 
   useEffect(() => {
     if (!isEditingZoom) return;
@@ -947,6 +1122,82 @@ export default function PdfEditorApp() {
     };
   }, []);
 
+  const observeWorkspace = useCallback((element: HTMLDivElement | null) => {
+    workspaceTouchCleanupRef.current?.();
+    workspaceTouchCleanupRef.current = null;
+    if (!element) return;
+
+    const belongsToWorkspace = (event: Event) => {
+      const target = event.target;
+      return target instanceof Node && element.contains(target);
+    };
+    const blockWorkspacePinch = (event: Event) => {
+      if (!belongsToWorkspace(event)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+    const blockWorkspaceMultiTouch = (event: TouchEvent) => {
+      if (event.touches.length < 2 || !belongsToWorkspace(event)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+    const nonPassiveCapture = { capture: true, passive: false } as const;
+
+    window.addEventListener(
+      "touchstart",
+      blockWorkspaceMultiTouch,
+      nonPassiveCapture,
+    );
+    window.addEventListener(
+      "touchmove",
+      blockWorkspaceMultiTouch,
+      nonPassiveCapture,
+    );
+    window.addEventListener(
+      "gesturestart",
+      blockWorkspacePinch,
+      nonPassiveCapture,
+    );
+    window.addEventListener(
+      "gesturechange",
+      blockWorkspacePinch,
+      nonPassiveCapture,
+    );
+    window.addEventListener(
+      "gestureend",
+      blockWorkspacePinch,
+      nonPassiveCapture,
+    );
+
+    workspaceTouchCleanupRef.current = () => {
+      window.removeEventListener(
+        "touchstart",
+        blockWorkspaceMultiTouch,
+        nonPassiveCapture,
+      );
+      window.removeEventListener(
+        "touchmove",
+        blockWorkspaceMultiTouch,
+        nonPassiveCapture,
+      );
+      window.removeEventListener(
+        "gesturestart",
+        blockWorkspacePinch,
+        nonPassiveCapture,
+      );
+      window.removeEventListener(
+        "gesturechange",
+        blockWorkspacePinch,
+        nonPassiveCapture,
+      );
+      window.removeEventListener(
+        "gestureend",
+        blockWorkspacePinch,
+        nonPassiveCapture,
+      );
+    };
+  }, []);
+
   useLayoutEffect(() => {
     const wasFullscreen = wasViewportFullscreenRef.current;
     wasViewportFullscreenRef.current = isFullscreen;
@@ -1013,6 +1264,12 @@ export default function PdfEditorApp() {
       x: event.clientX,
       y: event.clientY,
     });
+    if (
+      settings.touchDrawingEnabled &&
+      activeTouchPointersRef.current.size < 2
+    ) {
+      return;
+    }
     try {
       event.currentTarget.setPointerCapture(event.pointerId);
     } catch {
@@ -1057,6 +1314,9 @@ export default function PdfEditorApp() {
       x: event.clientX,
       y: event.clientY,
     });
+    if (settings.touchDrawingEnabled && !suppressTouchUntilClearRef.current) {
+      return;
+    }
     claimPdfTouchGesture(event);
     if (!suppressTouchUntilClearRef.current) {
       const viewer = viewerRef.current;
@@ -1094,8 +1354,11 @@ export default function PdfEditorApp() {
     )
       return;
 
-    claimPdfTouchGesture(event);
     activeTouchPointersRef.current.delete(event.pointerId);
+    if (settings.touchDrawingEnabled && !suppressTouchUntilClearRef.current) {
+      return;
+    }
+    claimPdfTouchGesture(event);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
@@ -1190,6 +1453,195 @@ export default function PdfEditorApp() {
       });
     }
     applyPdfToolbarChangeToSelection(editor.api, normalizedChange);
+  };
+
+  const handleImageInput = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !activeDocument) return;
+
+    const editor = annotationEditorsRef.current.get(pageNumber);
+    if (!editor) {
+      setStatus(`Page ${pageNumber} is not ready`);
+      return;
+    }
+    if (!isAllowedImageContentType(file.type)) {
+      setStatus("Choose a JPEG, PNG, WebP, or GIF image");
+      return;
+    }
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+      setStatus("Images must be 10 MB or smaller");
+      return;
+    }
+
+    setIsBusy(true);
+    setStatus("Adding image…");
+    try {
+      const [{ width: naturalWidth, height: naturalHeight }, excalidraw] =
+        await Promise.all([
+          loadImageDimensions(file),
+          import("@excalidraw/excalidraw"),
+        ]);
+      let dataURL: DataURL;
+      if (isCloud) {
+        if (!userId) throw new Error("Sign in before adding an image.");
+        const blob = await upload(
+          `users/${userId}/images/${activeDocument.id}/${sanitizeImageFilename(file.name)}`,
+          file,
+          {
+            access: "private",
+            handleUploadUrl: "/api/attachments/upload",
+            clientPayload: JSON.stringify({
+              kind: "pdf-annotation",
+              documentId: activeDocument.id,
+            }),
+          },
+        );
+        dataURL = createPrivateImageUrl(blob.pathname) as DataURL;
+      } else {
+        dataURL = (await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = () =>
+            reject(new Error("Could not read this image."));
+          reader.readAsDataURL(file);
+        })) as DataURL;
+      }
+
+      const appState = editor.api.getAppState();
+      const zoom = appState.zoom.value;
+      const maximumWidth = Math.max(120, appState.width / zoom / 2);
+      const maximumHeight = Math.max(120, appState.height / zoom / 2);
+      const scale = Math.min(
+        1,
+        maximumWidth / naturalWidth,
+        maximumHeight / naturalHeight,
+      );
+      const width = Math.max(1, naturalWidth * scale);
+      const height = Math.max(1, naturalHeight * scale);
+      const centerX = appState.width / (2 * zoom) - appState.scrollX;
+      const centerY = appState.height / (2 * zoom) - appState.scrollY;
+      const fileId = createId() as FileId;
+      const [imageElement] = excalidraw.convertToExcalidrawElements(
+        [
+          {
+            type: "image",
+            x: centerX - width / 2,
+            y: centerY - height / 2,
+            width,
+            height,
+            fileId,
+            status: "saved",
+          },
+        ],
+        { regenerateIds: true },
+      );
+      editor.api.addFiles([
+        {
+          id: fileId,
+          mimeType: file.type as BinaryFileData["mimeType"],
+          dataURL,
+          created: Date.now(),
+          lastRetrieved: Date.now(),
+        },
+      ]);
+      editor.api.updateScene({
+        elements: [
+          ...editor.api.getSceneElementsIncludingDeleted(),
+          imageElement,
+        ],
+        appState: { selectedElementIds: { [imageElement.id]: true } },
+        captureUpdate: excalidraw.CaptureUpdateAction.IMMEDIATELY,
+      });
+      setAnnotationToolbar((current) => ({
+        ...current,
+        tool: "selection",
+        toolLocked: false,
+      }));
+      setStatus("Image added");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not add image");
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const insertLibraryImage = async (image: UploadedImage) => {
+    setIsImageLibraryOpen(false);
+    const editor = annotationEditorsRef.current.get(pageNumber);
+    if (!editor) {
+      setStatus(`Page ${pageNumber} is not ready`);
+      return;
+    }
+
+    setIsBusy(true);
+    setStatus("Adding library image…");
+    try {
+      const [{ width: naturalWidth, height: naturalHeight }, excalidraw] =
+        await Promise.all([
+          loadImageDimensions(image.url),
+          import("@excalidraw/excalidraw"),
+        ]);
+      const appState = editor.api.getAppState();
+      const zoom = appState.zoom.value;
+      const maximumWidth = Math.max(120, appState.width / zoom / 2);
+      const maximumHeight = Math.max(120, appState.height / zoom / 2);
+      const scale = Math.min(
+        1,
+        maximumWidth / naturalWidth,
+        maximumHeight / naturalHeight,
+      );
+      const width = Math.max(1, naturalWidth * scale);
+      const height = Math.max(1, naturalHeight * scale);
+      const centerX = appState.width / (2 * zoom) - appState.scrollX;
+      const centerY = appState.height / (2 * zoom) - appState.scrollY;
+      const fileId = createId() as FileId;
+      const [imageElement] = excalidraw.convertToExcalidrawElements(
+        [
+          {
+            type: "image",
+            x: centerX - width / 2,
+            y: centerY - height / 2,
+            width,
+            height,
+            fileId,
+            status: "saved",
+          },
+        ],
+        { regenerateIds: true },
+      );
+      editor.api.addFiles([
+        {
+          id: fileId,
+          mimeType: getImageContentType(image.originalFilename),
+          dataURL: image.url as DataURL,
+          created: image.uploadedAt,
+          lastRetrieved: Date.now(),
+        },
+      ]);
+      editor.api.updateScene({
+        elements: [
+          ...editor.api.getSceneElementsIncludingDeleted(),
+          imageElement,
+        ],
+        appState: { selectedElementIds: { [imageElement.id]: true } },
+        captureUpdate: excalidraw.CaptureUpdateAction.IMMEDIATELY,
+      });
+      setAnnotationToolbar((current) => ({
+        ...current,
+        tool: "selection",
+        toolLocked: false,
+      }));
+      setStatus("Library image added");
+    } catch (error) {
+      setStatus(
+        error instanceof Error
+          ? error.message
+          : "Could not add the library image",
+      );
+    } finally {
+      setIsBusy(false);
+    }
   };
 
   const reloadDocuments = useCallback(async () => {
@@ -1640,6 +2092,13 @@ export default function PdfEditorApp() {
         hidden
         onChange={importEditable}
       />
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/gif"
+        className="hidden"
+        onChange={handleImageInput}
+      />
       <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-4 py-2">
         <Link href="/" className="rounded px-2 py-1 text-sm hover:bg-slate-100">
           ← Notebooks
@@ -1663,6 +2122,13 @@ export default function PdfEditorApp() {
           onClick={() => projectInputRef.current?.click()}
         >
           Open project
+        </button>
+        <button
+          type="button"
+          className="rounded border border-slate-300 px-3 py-1.5 text-sm"
+          onClick={() => setIsSettingsOpen(true)}
+        >
+          Settings
         </button>
         {isSignedIn && <UserButton />}
       </header>
@@ -1703,6 +2169,7 @@ export default function PdfEditorApp() {
           </section>
         ) : (
           <div
+            ref={observeWorkspace}
             className={`pdf-workspace flex min-h-0 min-w-0 flex-1 overflow-hidden bg-slate-100 ${
               isFullscreen ? "fixed inset-0 z-50" : "h-full"
             }`}
@@ -1758,6 +2225,8 @@ export default function PdfEditorApp() {
                     activePage={pageNumber}
                     onChange={changeAnnotationToolbar}
                     onDockChange={setAnnotationToolbarDock}
+                    onInsertImage={() => imageInputRef.current?.click()}
+                    onOpenImageLibrary={() => setIsImageLibraryOpen(true)}
                     onUndo={() => runActivePageHistory(false)}
                     onRedo={() => runActivePageHistory(true)}
                   />
@@ -1934,6 +2403,7 @@ export default function PdfEditorApp() {
                         lazy={viewMode === "continuous"}
                         getIntersectionRoot={getViewerElement}
                         toolbarState={annotationToolbar}
+                        isTouchDrawingEnabled={settings.touchDrawingEnabled}
                         onPageSizeChange={(width) => {
                           pageWidthsRef.current.set(number, width);
                           if (number === pageNumber) setActivePageWidth(width);
@@ -1975,6 +2445,8 @@ export default function PdfEditorApp() {
                     activePage={pageNumber}
                     onChange={changeAnnotationToolbar}
                     onDockChange={setAnnotationToolbarDock}
+                    onInsertImage={() => imageInputRef.current?.click()}
+                    onOpenImageLibrary={() => setIsImageLibraryOpen(true)}
                     onUndo={() => runActivePageHistory(false)}
                     onRedo={() => runActivePageHistory(true)}
                   />
@@ -1984,6 +2456,26 @@ export default function PdfEditorApp() {
           </div>
         )}
       </div>
+      {isImageLibraryOpen && activeDocument && (
+        <ImageLibraryDialog
+          storageMode={isCloud ? "cloud" : "local"}
+          notebooks={[]}
+          selectedTextCellId={null}
+          selectedExcalidrawCellId={null}
+          selectedPdfPage={pageNumber}
+          onInsertIntoPdf={(image) => void insertLibraryImage(image)}
+          onClose={() => setIsImageLibraryOpen(false)}
+        />
+      )}
+      {isSettingsOpen && (
+        <SettingsDialog
+          settings={settings}
+          saveStatus={settingsSaveStatus}
+          onChange={updateSettings}
+          onClose={() => setIsSettingsOpen(false)}
+          isLocalMode={!isCloud}
+        />
+      )}
     </main>
   );
 }

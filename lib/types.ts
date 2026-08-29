@@ -190,12 +190,22 @@ export interface UploadedImage {
   trashedAt: number | null;
 }
 
-export interface ImageReference {
+export interface NotebookImageReference {
+  kind: "notebook";
   notebookTitle: string;
   cellId: string;
   cellType: "text" | "excalidraw";
   cellNumber: number;
 }
+
+export interface PdfImageReference {
+  kind: "pdf";
+  pdfTitle: string;
+  documentId: string;
+  pageNumber: number;
+}
+
+export type ImageReference = NotebookImageReference | PdfImageReference;
 
 export interface UploadedImagesResponse {
   images: UploadedImage[];

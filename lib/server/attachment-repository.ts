@@ -14,10 +14,14 @@ interface AttachmentRow {
 }
 
 interface AttachmentReferenceRow {
-  notebook_title: string;
-  cell_id: string;
-  cell_type: "text" | "excalidraw";
-  cell_number: number;
+  kind: "notebook" | "pdf";
+  notebook_title: string | null;
+  cell_id: string | null;
+  cell_type: "text" | "excalidraw" | null;
+  cell_number: number | null;
+  pdf_title: string | null;
+  document_id: string | null;
+  page_number: number | null;
 }
 
 export interface AttachmentIndexEntry {
@@ -268,10 +272,14 @@ export async function getAttachmentReferences(
   const rows = (await sql.query(
     `
       select
+        'notebook' as kind,
         notebooks.title as notebook_title,
         cells.id as cell_id,
         cells.type as cell_type,
-        cells.position + 1 as cell_number
+        cells.position + 1 as cell_number,
+        null::text as pdf_title,
+        null::uuid as document_id,
+        null::integer as page_number
       from cells
       join notebooks on notebooks.id = cells.notebook_id
       where notebooks.user_id = $1
@@ -280,17 +288,41 @@ export async function getAttachmentReferences(
           coalesce(cells.content, '') like '%' || $2 || '%'
           or coalesce(cells.drawing, '') like '%' || $2 || '%'
         )
-      order by notebooks.position, cells.position
+      union all
+      select
+        'pdf' as kind,
+        null::text as notebook_title,
+        null::uuid as cell_id,
+        null::text as cell_type,
+        null::integer as cell_number,
+        pdf_documents.title as pdf_title,
+        pdf_documents.id as document_id,
+        pdf_page_annotations.page_number
+      from pdf_page_annotations
+      join pdf_documents
+        on pdf_documents.id = pdf_page_annotations.document_id
+      where pdf_documents.user_id = $1
+        and pdf_page_annotations.scene_json like '%' || $2 || '%'
     `,
     [userId, pathname],
   )) as AttachmentReferenceRow[];
 
-  return rows.map((row) => ({
-    notebookTitle: row.notebook_title,
-    cellId: row.cell_id,
-    cellType: row.cell_type,
-    cellNumber: Number(row.cell_number),
-  }));
+  return rows.map((row) =>
+    row.kind === "pdf"
+      ? {
+          kind: "pdf" as const,
+          pdfTitle: row.pdf_title ?? "Untitled PDF",
+          documentId: row.document_id ?? "",
+          pageNumber: Number(row.page_number),
+        }
+      : {
+          kind: "notebook" as const,
+          notebookTitle: row.notebook_title ?? "Untitled notebook",
+          cellId: row.cell_id ?? "",
+          cellType: row.cell_type ?? "text",
+          cellNumber: Number(row.cell_number),
+        },
+  );
 }
 
 export async function deleteAttachmentRecord(
@@ -332,6 +364,15 @@ export async function getExpiredUnreferencedAttachments(
               or coalesce(cells.drawing, '') like
                 '%' || image_attachments.pathname || '%'
             )
+        )
+        and not exists (
+          select 1
+          from pdf_page_annotations
+          join pdf_documents
+            on pdf_documents.id = pdf_page_annotations.document_id
+          where pdf_documents.user_id = image_attachments.user_id
+            and pdf_page_annotations.scene_json like
+              '%' || image_attachments.pathname || '%'
         )
     `,
     [userId],

@@ -41,6 +41,9 @@ export default function DrawingCellEditor({
   const [tool, setTool] = useState<"pen" | "eraser">("pen");
   const [color, setColor] = useState("#0f172a");
   const [brushSize, setBrushSize] = useState(4);
+  const [pressureMode, setPressureMode] = useState<"dynamic" | "constant">(
+    "dynamic",
+  );
   const [isSaving, setIsSaving] = useState(false);
 
   const canvasWidth = 900;
@@ -168,14 +171,14 @@ export default function DrawingCellEditor({
   }
 
   function getStrokeWidth(event: PointerEvent): number {
-    if (event.pointerType !== "pen") {
+    if (pressureMode === "constant" || event.pointerType !== "pen") {
       return brushSize;
     }
 
     const pressure = event.pressure > 0 ? event.pressure : 0.5;
     const pressureMultiplier = 0.35 + pressure * 1.3;
 
-    return Math.max(0.5, brushSize * pressureMultiplier);
+    return Math.max(0.0625, brushSize * pressureMultiplier);
   }
 
   function stopDrawing(event: React.PointerEvent<HTMLCanvasElement>) {
@@ -382,13 +385,28 @@ export default function DrawingCellEditor({
           Size
           <input
             type="range"
-            min={1}
+            min={0.25}
             max={24}
+            step={0.25}
             value={brushSize}
             onChange={(event) => setBrushSize(Number(event.target.value))}
             className="w-28 accent-slate-900 outline-none focus-visible:border-slate-400 focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
           />
           <span className="w-6 text-right text-slate-400">{brushSize}</span>
+        </label>
+
+        <label className="flex items-center gap-2 text-xs font-medium text-slate-500">
+          Pen
+          <select
+            value={pressureMode}
+            onChange={(event) =>
+              setPressureMode(event.target.value as "dynamic" | "constant")
+            }
+            className="rounded border border-slate-300 bg-white px-2 py-1"
+          >
+            <option value="dynamic">Dynamic</option>
+            <option value="constant">Constant width</option>
+          </select>
         </label>
 
         <button
@@ -423,7 +441,11 @@ export default function DrawingCellEditor({
           : cell.drawing
             ? "Drawing saved"
             : "Empty drawing"}{" "}
-        | Pen pressure is automatic when supported.
+        |{" "}
+        {pressureMode === "dynamic"
+          ? "Dynamic pen pressure"
+          : "Constant-width pen"}
+        .
       </p>
     </div>
   );

@@ -118,7 +118,7 @@ export async function DELETE(
   if (references.length > 0) {
     return Response.json(
       {
-        error: "This image is still used by one or more cells",
+        error: "This image is still in use",
         references,
       },
       { status: 409 },

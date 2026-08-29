@@ -6,6 +6,7 @@ import {
 } from "@/lib/attachments";
 import { getCurrentUserId } from "@/lib/server/current-user";
 import { userOwnsImageAttachmentCell } from "@/lib/server/notebook-repository";
+import { getPdfDocument } from "@/lib/server/pdf-repository";
 import {
   portableImportPathPrefix,
   verifyPortableImportSession,
@@ -23,7 +24,15 @@ interface PortableImageUploadPayload {
   token: string;
 }
 
-type ImageUploadPayload = CellImageUploadPayload | PortableImageUploadPayload;
+interface PdfAnnotationImageUploadPayload {
+  kind: "pdf-annotation";
+  documentId: string;
+}
+
+type ImageUploadPayload =
+  | CellImageUploadPayload
+  | PortableImageUploadPayload
+  | PdfAnnotationImageUploadPayload;
 
 function parseImageUploadPayload(value: string | null): ImageUploadPayload {
   if (!value) {
@@ -34,6 +43,19 @@ function parseImageUploadPayload(value: string | null): ImageUploadPayload {
 
   if (typeof parsed !== "object" || parsed === null) {
     throw new Error("Invalid upload context");
+  }
+
+  if (
+    "kind" in parsed &&
+    parsed.kind === "pdf-annotation" &&
+    "documentId" in parsed &&
+    typeof parsed.documentId === "string" &&
+    isUuid(parsed.documentId)
+  ) {
+    return {
+      kind: "pdf-annotation",
+      documentId: parsed.documentId,
+    };
   }
 
   if (
@@ -90,7 +112,7 @@ export async function POST(request: Request) {
         const payload = parseImageUploadPayload(clientPayload);
         const appUserId = await getCurrentUserId();
         let expectedPrefix: string;
-        if ("kind" in payload) {
+        if ("kind" in payload && payload.kind === "portable-import") {
           verifyPortableImportSession(payload.token, {
             sessionId: payload.sessionId,
             appUserId,
@@ -101,6 +123,10 @@ export async function POST(request: Request) {
             payload.sessionId,
             payload.attachmentId,
           );
+        } else if ("kind" in payload && payload.kind === "pdf-annotation") {
+          const document = await getPdfDocument(appUserId, payload.documentId);
+          if (!document) throw new Error("PDF document not found");
+          expectedPrefix = `users/${clerkUserId}/images/${payload.documentId}/`;
         } else {
           const ownsCell = await userOwnsImageAttachmentCell(
             appUserId,

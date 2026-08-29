@@ -249,6 +249,7 @@ export default function CellFrame({
         <ExcalidrawCellEditor
           cell={cell}
           isDarkMode={isDarkMode}
+          isTouchDrawingEnabled={isTouchDrawingEnabled}
           storageMode={storageMode}
           imageInsertion={excalidrawImageInsertion}
           flushRef={excalidrawFlushRef}

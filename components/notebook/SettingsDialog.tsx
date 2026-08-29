@@ -245,8 +245,8 @@ export default function SettingsDialog({
                   />
                   <ToggleSetting
                     checked={settings.touchDrawingEnabled}
-                    label="Touch drawing"
-                    description="Draw with a finger in legacy canvas cells. When disabled, one-finger gestures scroll the notebook. Pens still draw."
+                    label="Draw with touch"
+                    description="Allow finger drawing in Excalidraw cells, legacy canvas cells, and the PDF editor. When disabled, fingers scroll or zoom while pens still draw."
                     onChange={(checked) =>
                       update("touchDrawingEnabled", checked)
                     }
