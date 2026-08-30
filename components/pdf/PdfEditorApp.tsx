@@ -142,7 +142,12 @@ const ANNOTATION_TOOLBAR_GUTTER_PX = 32;
 const MIN_PDF_ZOOM = 0.25;
 const PDF_ANNOTATION_EXPORT_SCALES = [1, 2, 3, 4, 6, 8, 12, 16] as const;
 type PdfAnnotationExportScale = (typeof PDF_ANNOTATION_EXPORT_SCALES)[number];
-const PDF_EXPORT_TILE_SIZE_PX = 2048;
+const PDF_EXPORT_MOBILE_TILE_SIZE_PX = 2048;
+const PDF_EXPORT_DESKTOP_TILE_SIZE_PX = 4096;
+const PDF_EXPORT_MOBILE_CANVAS_MAX_DIMENSION_PX = 4096;
+const PDF_EXPORT_MOBILE_CANVAS_MAX_AREA_PX = 16_000_000;
+const PDF_EXPORT_DESKTOP_CANVAS_MAX_DIMENSION_PX = 8192;
+const PDF_EXPORT_DESKTOP_CANVAS_MAX_AREA_PX = 32_000_000;
 
 function loadSvgImage(svg: SVGSVGElement) {
   return new Promise<{ image: HTMLImageElement; url: string }>(
@@ -2433,6 +2438,20 @@ export default function PdfEditorApp() {
           scenesByPage.set(draftPageNumber, draftScene);
         }
       }
+      const isAppleMobile =
+        /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+      const isConstrainedMobile =
+        isAppleMobile || /Android|Mobile/.test(navigator.userAgent);
+      const tileSize = isConstrainedMobile
+        ? PDF_EXPORT_MOBILE_TILE_SIZE_PX
+        : PDF_EXPORT_DESKTOP_TILE_SIZE_PX;
+      const singleCanvasMaxDimension = isConstrainedMobile
+        ? PDF_EXPORT_MOBILE_CANVAS_MAX_DIMENSION_PX
+        : PDF_EXPORT_DESKTOP_CANVAS_MAX_DIMENSION_PX;
+      const singleCanvasMaxArea = isConstrainedMobile
+        ? PDF_EXPORT_MOBILE_CANVAS_MAX_AREA_PX
+        : PDF_EXPORT_DESKTOP_CANVAS_MAX_AREA_PX;
       for (const [annotationPageNumber, annotationScene] of scenesByPage) {
         const scene = parseScene(annotationScene);
         const elements =
@@ -2459,18 +2478,48 @@ export default function PdfEditorApp() {
           exportBackground: false,
           exportWithDarkMode: false,
         };
+        const estimatedWidth = x2 - x1 + EXPORT_PADDING_PX * 2;
+        const estimatedHeight = y2 - y1 + EXPORT_PADDING_PX * 2;
+        const estimatedPixelWidth = Math.ceil(
+          estimatedWidth * annotationExportScale,
+        );
+        const estimatedPixelHeight = Math.ceil(
+          estimatedHeight * annotationExportScale,
+        );
+        const canUseSingleCanvas =
+          annotationExportScale === 1 ||
+          (estimatedPixelWidth <= singleCanvasMaxDimension &&
+            estimatedPixelHeight <= singleCanvasMaxDimension &&
+            estimatedPixelWidth * estimatedPixelHeight <= singleCanvasMaxArea);
 
-        if (annotationExportScale === 1) {
-          const overlay = await exportToBlob({
-            elements,
-            files: scene.files,
-            appState: exportAppState,
-            mimeType: "image/png",
-            exportPadding: EXPORT_PADDING_PX,
-          });
-          const image = await pdf.embedPng(await overlay.arrayBuffer());
-          page.drawImage(image, placement);
-          continue;
+        if (canUseSingleCanvas) {
+          try {
+            const overlay = await exportToBlob({
+              elements,
+              files: scene.files,
+              appState: exportAppState,
+              mimeType: "image/png",
+              exportPadding: EXPORT_PADDING_PX,
+              ...(annotationExportScale === 1
+                ? {}
+                : {
+                    getDimensions: (width: number, height: number) => ({
+                      width: Math.ceil(width * annotationExportScale),
+                      height: Math.ceil(height * annotationExportScale),
+                      scale: annotationExportScale,
+                    }),
+                  }),
+            });
+            const image = await pdf.embedPng(await overlay.arrayBuffer());
+            page.drawImage(image, placement);
+            continue;
+          } catch (error) {
+            if (annotationExportScale === 1) throw error;
+            console.warn(
+              "Single-canvas annotation export failed; using tiled export",
+              error,
+            );
+          }
         }
 
         const svg = await exportToSvg({
@@ -2487,24 +2536,10 @@ export default function PdfEditorApp() {
           sourceViewBox.height || y2 - y1 + EXPORT_PADDING_PX * 2;
         const pixelWidth = Math.ceil(sceneWidth * annotationExportScale);
         const pixelHeight = Math.ceil(sceneHeight * annotationExportScale);
-        for (
-          let tileTop = 0;
-          tileTop < pixelHeight;
-          tileTop += PDF_EXPORT_TILE_SIZE_PX
-        ) {
-          for (
-            let tileLeft = 0;
-            tileLeft < pixelWidth;
-            tileLeft += PDF_EXPORT_TILE_SIZE_PX
-          ) {
-            const tileWidth = Math.min(
-              PDF_EXPORT_TILE_SIZE_PX,
-              pixelWidth - tileLeft,
-            );
-            const tileHeight = Math.min(
-              PDF_EXPORT_TILE_SIZE_PX,
-              pixelHeight - tileTop,
-            );
+        for (let tileTop = 0; tileTop < pixelHeight; tileTop += tileSize) {
+          for (let tileLeft = 0; tileLeft < pixelWidth; tileLeft += tileSize) {
+            const tileWidth = Math.min(tileSize, pixelWidth - tileLeft);
+            const tileHeight = Math.min(tileSize, pixelHeight - tileTop);
             const tileSvg = svg.cloneNode(true) as SVGSVGElement;
             tileSvg.setAttribute(
               "viewBox",
