@@ -2716,11 +2716,14 @@ export default function PdfEditorApp() {
                 </aside>
               )}
               <div
-                className={`flex min-h-0 min-w-0 flex-1 items-stretch overflow-hidden ${
-                  annotationToolbarDock === "top" ||
-                  annotationToolbarDock === "bottom"
-                    ? "flex-col"
-                    : "flex-row"
+                className={`grid min-h-0 min-w-0 flex-1 overflow-hidden ${
+                  annotationToolbarDock === "top"
+                    ? "grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)]"
+                    : annotationToolbarDock === "bottom"
+                      ? "grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)_auto]"
+                      : annotationToolbarDock === "left"
+                        ? "grid-cols-[auto_minmax(0,1fr)] grid-rows-[minmax(0,1fr)]"
+                        : "grid-cols-[minmax(0,1fr)_auto] grid-rows-[minmax(0,1fr)]"
                 }`}
               >
                 {(annotationToolbarDock === "top" ||
