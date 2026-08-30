@@ -29,6 +29,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { flushSync } from "react-dom";
 import { Document, Page, pdfjs } from "react-pdf";
 import ImageLibraryDialog from "@/components/notebook/ImageLibraryDialog";
 import SettingsDialog from "@/components/notebook/SettingsDialog";
@@ -551,6 +552,13 @@ function PdfAnnotationCanvas({
     [],
   );
 
+  useLayoutEffect(() => {
+    // Expanded toolbar controls can wrap differently for each active tool,
+    // shifting the PDF without changing the annotation layer's dimensions.
+    // Re-read the DOM offset after that sibling layout change.
+    if (toolbarState.tool) refreshCoordinates();
+  }, [refreshCoordinates, toolbarState.tool]);
+
   const handleExcalidrawApi = useCallback(
     (api: ExcalidrawImperativeAPI) => {
       apiRef.current = api;
@@ -578,7 +586,26 @@ function PdfAnnotationCanvas({
     if (!layer) return;
     const observer = new ResizeObserver(() => refreshCoordinates());
     observer.observe(layer);
-    return () => observer.disconnect();
+    const viewer = layer.closest<HTMLElement>("[data-pdf-viewer]");
+    const pages = layer.closest<HTMLElement>("[data-pdf-pages]");
+    if (viewer) observer.observe(viewer);
+    if (pages) observer.observe(pages);
+
+    let scrollFrame: number | null = null;
+    const handleViewerScroll = () => {
+      if (scrollFrame !== null) return;
+      scrollFrame = requestAnimationFrame(() => {
+        scrollFrame = null;
+        refreshCoordinates();
+      });
+    };
+    viewer?.addEventListener("scroll", handleViewerScroll, { passive: true });
+
+    return () => {
+      observer.disconnect();
+      viewer?.removeEventListener("scroll", handleViewerScroll);
+      if (scrollFrame !== null) cancelAnimationFrame(scrollFrame);
+    };
   }, [refreshCoordinates]);
 
   useLayoutEffect(() => {
@@ -602,6 +629,11 @@ function PdfAnnotationCanvas({
       ref={layerRef}
       className="pdf-annotation-layer absolute inset-0 z-10"
       style={{ width, height }}
+      onPointerDownCapture={() => {
+        const api = apiRef.current;
+        if (!api) return;
+        flushSync(() => api.refresh());
+      }}
     >
       <Excalidraw
         key={`viewer-zoom-${viewerZoom}`}
@@ -2165,6 +2197,135 @@ export default function PdfEditorApp() {
     await reloadDocuments();
   };
 
+  const documentControls = activeDocument ? (
+    <>
+      <strong className="mr-auto max-w-72 truncate">
+        {activeDocument.title}
+      </strong>
+      <button
+        type="button"
+        className={`rounded border px-2 py-1 text-xs ${zoomMode === "fit-width" ? "border-sky-500 bg-sky-50 text-sky-700" : "border-slate-300"}`}
+        onClick={() => setZoomMode("fit-width")}
+      >
+        Fit width
+      </button>
+      <div className="flex items-center rounded border border-slate-300">
+        <button
+          type="button"
+          className="px-2 py-1 text-sm hover:bg-slate-100"
+          onClick={() => changePdfZoom(-0.1)}
+          aria-label="Zoom out"
+        >
+          &minus;
+        </button>
+        {isEditingZoom ? (
+          <label className="flex items-center border-x border-slate-300 bg-white px-1 text-xs">
+            <span className="sr-only">Custom zoom percentage</span>
+            <input
+              ref={zoomInputRef}
+              type="number"
+              inputMode="decimal"
+              min={MIN_PDF_ZOOM * 100}
+              max={MAX_PDF_ZOOM * 100}
+              step="1"
+              value={zoomInput}
+              onChange={(event) => setZoomInput(event.target.value)}
+              onBlur={commitZoomInput}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") event.currentTarget.blur();
+                if (event.key === "Escape") setIsEditingZoom(false);
+              }}
+              onWheel={(event) => event.currentTarget.blur()}
+              className="w-12 bg-transparent py-1 text-right outline-none"
+            />
+            <span>%</span>
+          </label>
+        ) : (
+          <button
+            type="button"
+            className="min-w-14 border-x border-slate-300 px-2 py-1 text-xs hover:bg-slate-100"
+            onClick={startEditingZoom}
+            title="Enter a custom zoom percentage"
+          >
+            {Math.round(effectivePdfZoom * 100)}%
+          </button>
+        )}
+        <button
+          type="button"
+          className="px-2 py-1 text-sm hover:bg-slate-100"
+          onClick={() => changePdfZoom(0.1)}
+          aria-label="Zoom in"
+        >
+          +
+        </button>
+      </div>
+      <button
+        type="button"
+        className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100"
+        onClick={realignAnnotationCanvases}
+        title="Reset annotation canvas alignment"
+      >
+        Realign
+      </button>
+      <button
+        type="button"
+        className="rounded border px-2 py-1 text-sm"
+        onClick={() =>
+          setViewMode((current) =>
+            current === "single" ? "continuous" : "single",
+          )
+        }
+      >
+        {viewMode === "single" ? "Continuous scroll" : "Single page"}
+      </button>
+      <button
+        type="button"
+        className="rounded border px-2 py-1 text-sm"
+        aria-expanded={areThumbnailsOpen}
+        onClick={() => setAreThumbnailsOpen((current) => !current)}
+      >
+        {areThumbnailsOpen ? "Hide pages" : "Show pages"}
+      </button>
+      <button
+        type="button"
+        className="rounded border px-2 py-1 text-sm"
+        onClick={toggleFullscreen}
+      >
+        {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+      </button>
+      <button
+        type="button"
+        className="rounded border px-2 py-1 text-sm"
+        onClick={renameActive}
+      >
+        Rename
+      </button>
+      <button
+        type="button"
+        disabled={isBusy}
+        className="rounded border px-2 py-1 text-sm"
+        onClick={exportEditable}
+      >
+        Editable project
+      </button>
+      <button
+        type="button"
+        disabled={isBusy}
+        className="rounded border px-2 py-1 text-sm"
+        onClick={exportFlattened}
+      >
+        Annotated PDF
+      </button>
+      <button
+        type="button"
+        className="rounded border border-red-200 px-2 py-1 text-sm text-red-700"
+        onClick={deleteActive}
+      >
+        Delete
+      </button>
+    </>
+  ) : null;
+
   return (
     <main
       ref={observePdfEditorRoot}
@@ -2224,6 +2385,11 @@ export default function PdfEditorApp() {
           Settings
         </button>
         {isSignedIn && <UserButton />}
+        {documentControls && !isFullscreen && (
+          <div className="flex w-full flex-wrap items-center gap-2 border-t border-slate-200 pt-2">
+            {documentControls}
+          </div>
+        )}
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
@@ -2327,6 +2493,7 @@ export default function PdfEditorApp() {
                 )}
                 <section
                   ref={observeViewer}
+                  data-pdf-viewer
                   className="min-h-0 min-w-0 flex-1 overscroll-contain overflow-auto p-4"
                   onScroll={(event) => {
                     viewerScrollRef.current = {
@@ -2340,145 +2507,148 @@ export default function PdfEditorApp() {
                   onPointerUpCapture={handlePdfPointerEndCapture}
                   onPointerCancelCapture={handlePdfPointerEndCapture}
                 >
-                  <div className="sticky top-0 z-30 mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-sm">
-                    <strong className="mr-auto truncate">
-                      {activeDocument.title}
-                    </strong>
-                    <button
-                      type="button"
-                      className={`rounded border px-2 py-1 text-xs ${zoomMode === "fit-width" ? "border-sky-500 bg-sky-50 text-sky-700" : "border-slate-300"}`}
-                      onClick={() => setZoomMode("fit-width")}
-                    >
-                      Fit width
-                    </button>
-                    <div className="flex items-center rounded border border-slate-300">
+                  {isFullscreen && (
+                    <div className="sticky top-0 left-0 z-30 mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-sm">
+                      <strong className="mr-auto truncate">
+                        {activeDocument.title}
+                      </strong>
                       <button
                         type="button"
-                        className="px-2 py-1 text-sm hover:bg-slate-100"
-                        onClick={() => changePdfZoom(-0.1)}
-                        aria-label="Zoom out"
+                        className={`rounded border px-2 py-1 text-xs ${zoomMode === "fit-width" ? "border-sky-500 bg-sky-50 text-sky-700" : "border-slate-300"}`}
+                        onClick={() => setZoomMode("fit-width")}
                       >
-                        −
+                        Fit width
                       </button>
-                      {isEditingZoom ? (
-                        <label className="flex items-center border-x border-slate-300 bg-white px-1 text-xs">
-                          <span className="sr-only">
-                            Custom zoom percentage
-                          </span>
-                          <input
-                            ref={zoomInputRef}
-                            type="number"
-                            inputMode="decimal"
-                            min={MIN_PDF_ZOOM * 100}
-                            max={MAX_PDF_ZOOM * 100}
-                            step="1"
-                            value={zoomInput}
-                            onChange={(event) =>
-                              setZoomInput(event.target.value)
-                            }
-                            onBlur={commitZoomInput}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter")
-                                event.currentTarget.blur();
-                              if (event.key === "Escape") {
-                                setIsEditingZoom(false);
-                              }
-                            }}
-                            onWheel={(event) => event.currentTarget.blur()}
-                            className="w-12 bg-transparent py-1 text-right outline-none"
-                          />
-                          <span>%</span>
-                        </label>
-                      ) : (
+                      <div className="flex items-center rounded border border-slate-300">
                         <button
                           type="button"
-                          className="min-w-14 border-x border-slate-300 px-2 py-1 text-xs hover:bg-slate-100"
-                          onClick={startEditingZoom}
-                          title="Enter a custom zoom percentage"
+                          className="px-2 py-1 text-sm hover:bg-slate-100"
+                          onClick={() => changePdfZoom(-0.1)}
+                          aria-label="Zoom out"
                         >
-                          {Math.round(effectivePdfZoom * 100)}%
+                          &minus;
                         </button>
-                      )}
+                        {isEditingZoom ? (
+                          <label className="flex items-center border-x border-slate-300 bg-white px-1 text-xs">
+                            <span className="sr-only">
+                              Custom zoom percentage
+                            </span>
+                            <input
+                              ref={zoomInputRef}
+                              type="number"
+                              inputMode="decimal"
+                              min={MIN_PDF_ZOOM * 100}
+                              max={MAX_PDF_ZOOM * 100}
+                              step="1"
+                              value={zoomInput}
+                              onChange={(event) =>
+                                setZoomInput(event.target.value)
+                              }
+                              onBlur={commitZoomInput}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter")
+                                  event.currentTarget.blur();
+                                if (event.key === "Escape") {
+                                  setIsEditingZoom(false);
+                                }
+                              }}
+                              onWheel={(event) => event.currentTarget.blur()}
+                              className="w-12 bg-transparent py-1 text-right outline-none"
+                            />
+                            <span>%</span>
+                          </label>
+                        ) : (
+                          <button
+                            type="button"
+                            className="min-w-14 border-x border-slate-300 px-2 py-1 text-xs hover:bg-slate-100"
+                            onClick={startEditingZoom}
+                            title="Enter a custom zoom percentage"
+                          >
+                            {Math.round(effectivePdfZoom * 100)}%
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="px-2 py-1 text-sm hover:bg-slate-100"
+                          onClick={() => changePdfZoom(0.1)}
+                          aria-label="Zoom in"
+                        >
+                          +
+                        </button>
+                      </div>
                       <button
                         type="button"
-                        className="px-2 py-1 text-sm hover:bg-slate-100"
-                        onClick={() => changePdfZoom(0.1)}
-                        aria-label="Zoom in"
+                        className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100"
+                        onClick={realignAnnotationCanvases}
+                        title="Reset annotation canvas alignment"
                       >
-                        +
+                        Realign
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded border px-2 py-1 text-sm"
+                        onClick={() =>
+                          setViewMode((current) =>
+                            current === "single" ? "continuous" : "single",
+                          )
+                        }
+                      >
+                        {viewMode === "single"
+                          ? "Continuous scroll"
+                          : "Single page"}
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded border px-2 py-1 text-sm"
+                        aria-expanded={areThumbnailsOpen}
+                        onClick={() =>
+                          setAreThumbnailsOpen((current) => !current)
+                        }
+                      >
+                        {areThumbnailsOpen ? "Hide pages" : "Show pages"}
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded border px-2 py-1 text-sm"
+                        onClick={toggleFullscreen}
+                      >
+                        {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded border px-2 py-1 text-sm"
+                        onClick={renameActive}
+                      >
+                        Rename
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        className="rounded border px-2 py-1 text-sm"
+                        onClick={exportEditable}
+                      >
+                        Editable project
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        className="rounded border px-2 py-1 text-sm"
+                        onClick={exportFlattened}
+                      >
+                        Annotated PDF
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded border border-red-200 px-2 py-1 text-sm text-red-700"
+                        onClick={deleteActive}
+                      >
+                        Delete
                       </button>
                     </div>
-                    <button
-                      type="button"
-                      className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100"
-                      onClick={realignAnnotationCanvases}
-                      title="Reset annotation canvas alignment"
-                    >
-                      Realign
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded border px-2 py-1 text-sm"
-                      onClick={() =>
-                        setViewMode((current) =>
-                          current === "single" ? "continuous" : "single",
-                        )
-                      }
-                    >
-                      {viewMode === "single"
-                        ? "Continuous scroll"
-                        : "Single page"}
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded border px-2 py-1 text-sm"
-                      aria-expanded={areThumbnailsOpen}
-                      onClick={() =>
-                        setAreThumbnailsOpen((current) => !current)
-                      }
-                    >
-                      {areThumbnailsOpen ? "Hide pages" : "Show pages"}
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded border px-2 py-1 text-sm"
-                      onClick={toggleFullscreen}
-                    >
-                      {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded border px-2 py-1 text-sm"
-                      onClick={renameActive}
-                    >
-                      Rename
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isBusy}
-                      className="rounded border px-2 py-1 text-sm"
-                      onClick={exportEditable}
-                    >
-                      Editable project
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isBusy}
-                      className="rounded border px-2 py-1 text-sm"
-                      onClick={exportFlattened}
-                    >
-                      Annotated PDF
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded border border-red-200 px-2 py-1 text-sm text-red-700"
-                      onClick={deleteActive}
-                    >
-                      Delete
-                    </button>
-                  </div>
+                  )}
                   <div
                     ref={pagesRef}
+                    data-pdf-pages
                     className={
                       viewMode === "continuous"
                         ? "touch-none space-y-6"
