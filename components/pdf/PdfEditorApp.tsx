@@ -2478,6 +2478,7 @@ export default function PdfEditorApp() {
           files: scene.files,
           appState: exportAppState,
           exportPadding: EXPORT_PADDING_PX,
+          skipInliningFonts: true,
         });
         const sourceViewBox = svg.viewBox.baseVal;
         const sceneWidth =
