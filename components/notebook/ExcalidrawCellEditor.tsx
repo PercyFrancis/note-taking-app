@@ -209,6 +209,9 @@ export default function ExcalidrawCellEditor({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [imageUploadError, setImageUploadError] = useState("");
+  const [isGridEnabled, setIsGridEnabled] = useState(() =>
+    Boolean(parseScene(cell.drawing)?.appState?.gridModeEnabled),
+  );
   const [penStrokeWidth, setPenStrokeWidth] = useState<PenStrokeWidth>(1);
   const [penPressureMode, setPenPressureMode] =
     useState<PenPressureMode>("dynamic");
@@ -694,6 +697,23 @@ export default function ExcalidrawCellEditor({
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            aria-pressed={isGridEnabled}
+            className={`${secondaryButtonClass} aria-pressed:border-sky-500 aria-pressed:bg-sky-50 aria-pressed:text-sky-700`}
+            onClick={() => {
+              const nextGridEnabled = !(
+                excalidrawApi?.getAppState().gridModeEnabled ?? isGridEnabled
+              );
+              setIsGridEnabled(nextGridEnabled);
+              excalidrawApi?.updateScene({
+                appState: { gridModeEnabled: nextGridEnabled },
+                captureUpdate: "NEVER",
+              });
+            }}
+          >
+            {isGridEnabled ? "Grid on" : "Grid off"}
+          </button>
           <label className="flex items-center gap-1 text-xs text-slate-600">
             Pen size
             <select
@@ -751,6 +771,15 @@ export default function ExcalidrawCellEditor({
           excalidrawAPI={setExcalidrawApi}
           onChange={(elements, appState, files) => {
             persistScene(elements, appState, files);
+            if (appState.gridModeEnabled !== isGridEnabled) {
+              queueMicrotask(() =>
+                setIsGridEnabled((current) =>
+                  current === appState.gridModeEnabled
+                    ? current
+                    : appState.gridModeEnabled,
+                ),
+              );
+            }
             const expectedPenMode = !isTouchDrawingEnabled;
             if (appState.penMode === expectedPenMode && appState.penDetected)
               return;

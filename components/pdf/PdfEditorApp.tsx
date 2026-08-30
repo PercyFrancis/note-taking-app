@@ -127,6 +127,14 @@ interface PendingPdfScene {
   files: BinaryFiles;
 }
 
+interface PdfZoomViewportAnchor {
+  surface: HTMLElement;
+  clientX: number;
+  clientY: number;
+  xRatio: number;
+  yRatio: number;
+}
+
 const SAVE_DELAY_MS = 750;
 const MULTIPART_UPLOAD_THRESHOLD_BYTES = 4 * 1024 * 1024;
 const EXPORT_PADDING_PX = 8;
@@ -903,6 +911,7 @@ function PdfEditablePage({
           Page {pageNumber}
         </div>
         <div
+          data-pdf-page-surface
           className="relative overflow-visible border border-slate-300 bg-white shadow-lg"
           style={{
             width: pageSize.width * zoom,
@@ -994,14 +1003,24 @@ export default function PdfEditorApp() {
   const activeTouchPointersRef = useRef(
     new Map<number, { x: number; y: number }>(),
   );
+  const touchPanSessionRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startScrollLeft: number;
+    startScrollTop: number;
+  } | null>(null);
   const pinchSessionRef = useRef<{
     active: boolean;
     initialDistance: number;
     initialZoom: number;
     targetZoom: number;
+    viewportAnchor: PdfZoomViewportAnchor | null;
   } | null>(null);
   const suppressTouchUntilClearRef = useRef(false);
   const pendingPinchZoomRef = useRef<number | null>(null);
+  const pendingZoomAnchorRef = useRef<PdfZoomViewportAnchor | null>(null);
+  const zoomAnchorFrameRef = useRef<number | null>(null);
   const annotationEditorsRef = useRef(
     new Map<number, PdfAnnotationEditorHandle>(),
   );
@@ -1102,6 +1121,37 @@ export default function PdfEditorApp() {
   );
   const effectivePdfZoom = zoomMode === "fit-width" ? fitWidthZoom : pdfZoom;
   const getViewerElement = useCallback(() => viewerRef.current, []);
+  const captureZoomViewportAnchor = useCallback(
+    (clientX?: number, clientY?: number): PdfZoomViewportAnchor | null => {
+      const viewer = viewerRef.current;
+      if (!viewer) return null;
+      const viewerBounds = viewer.getBoundingClientRect();
+      const anchorX = clientX ?? (viewerBounds.left + viewerBounds.right) / 2;
+      const anchorY = clientY ?? (viewerBounds.top + viewerBounds.bottom) / 2;
+      const pointTarget = document.elementFromPoint(anchorX, anchorY);
+      const surface =
+        pointTarget?.closest<HTMLElement>("[data-pdf-page-surface]") ??
+        document.querySelector<HTMLElement>(
+          `#pdf-page-${pageNumber} [data-pdf-page-surface]`,
+        );
+      if (!surface) return null;
+      const surfaceBounds = surface.getBoundingClientRect();
+      return {
+        surface,
+        clientX: anchorX,
+        clientY: anchorY,
+        xRatio: Math.min(
+          1,
+          Math.max(0, (anchorX - surfaceBounds.left) / surfaceBounds.width),
+        ),
+        yRatio: Math.min(
+          1,
+          Math.max(0, (anchorY - surfaceBounds.top) / surfaceBounds.height),
+        ),
+      };
+    },
+    [pageNumber],
+  );
 
   useEffect(() => {
     const previousPageNumber = previousPageNumberRef.current;
@@ -1168,6 +1218,9 @@ export default function PdfEditorApp() {
       if (drawingAnchorFrameRef.current !== null) {
         cancelAnimationFrame(drawingAnchorFrameRef.current);
       }
+      if (zoomAnchorFrameRef.current !== null) {
+        cancelAnimationFrame(zoomAnchorFrameRef.current);
+      }
     },
     [],
   );
@@ -1180,11 +1233,35 @@ export default function PdfEditorApp() {
     )
       return;
     pendingPinchZoomRef.current = null;
+    const viewportAnchor = pendingZoomAnchorRef.current;
+    pendingZoomAnchorRef.current = null;
     if (pagesRef.current) {
       pagesRef.current.style.transform = "";
       pagesRef.current.style.transformOrigin = "";
       pagesRef.current.style.willChange = "";
     }
+    if (!viewportAnchor) return;
+
+    const restoreAnchor = () => {
+      const viewer = viewerRef.current;
+      if (!viewer || !viewportAnchor.surface.isConnected) return;
+      const bounds = viewportAnchor.surface.getBoundingClientRect();
+      const anchoredX = bounds.left + bounds.width * viewportAnchor.xRatio;
+      const anchoredY = bounds.top + bounds.height * viewportAnchor.yRatio;
+      viewer.scrollBy({
+        left: anchoredX - viewportAnchor.clientX,
+        top: anchoredY - viewportAnchor.clientY,
+      });
+    };
+
+    restoreAnchor();
+    if (zoomAnchorFrameRef.current !== null) {
+      cancelAnimationFrame(zoomAnchorFrameRef.current);
+    }
+    zoomAnchorFrameRef.current = requestAnimationFrame(() => {
+      zoomAnchorFrameRef.current = null;
+      restoreAnchor();
+    });
   }, [effectivePdfZoom]);
 
   const observeViewer = useCallback((element: HTMLElement | null) => {
@@ -1363,6 +1440,7 @@ export default function PdfEditorApp() {
     pinchSessionRef.current = null;
     suppressTouchUntilClearRef.current = false;
     activeTouchPointersRef.current.clear();
+    touchPanSessionRef.current = null;
     if (pagesRef.current) {
       pagesRef.current.style.transform = "";
       pagesRef.current.style.transformOrigin = "";
@@ -1437,11 +1515,23 @@ export default function PdfEditorApp() {
     setIsFullscreen((current) => !current);
   };
 
-  const changePdfZoom = (change: number) => {
-    setZoomMode("custom");
-    setPdfZoom(
-      Math.min(MAX_PDF_ZOOM, Math.max(MIN_PDF_ZOOM, effectivePdfZoom + change)),
+  const setAnchoredPdfZoom = (
+    nextZoom: number,
+    viewportAnchor = captureZoomViewportAnchor(),
+  ) => {
+    const normalizedZoom = Math.min(
+      MAX_PDF_ZOOM,
+      Math.max(MIN_PDF_ZOOM, nextZoom),
     );
+    if (Math.abs(normalizedZoom - effectivePdfZoom) <= 0.001) return;
+    pendingPinchZoomRef.current = normalizedZoom;
+    pendingZoomAnchorRef.current = viewportAnchor;
+    setZoomMode("custom");
+    setPdfZoom(normalizedZoom);
+  };
+
+  const changePdfZoom = (change: number) => {
+    setAnchoredPdfZoom(effectivePdfZoom + change);
   };
 
   const claimPdfTouchGesture = (event: ReactPointerEvent<HTMLElement>) => {
@@ -1528,7 +1618,23 @@ export default function PdfEditorApp() {
       // Pointer capture is best-effort on older iPadOS Safari releases.
     }
     claimPdfTouchGesture(event);
+    if (
+      activeTouchPointersRef.current.size === 1 &&
+      !settings.touchDrawingEnabled
+    ) {
+      const viewer = viewerRef.current;
+      if (viewer) {
+        touchPanSessionRef.current = {
+          pointerId: event.pointerId,
+          startX: event.clientX,
+          startY: event.clientY,
+          startScrollLeft: viewer.scrollLeft,
+          startScrollTop: viewer.scrollTop,
+        };
+      }
+    }
     if (activeTouchPointersRef.current.size < 2) return;
+    touchPanSessionRef.current = null;
     drawingViewportAnchorRef.current = null;
     if (suppressTouchUntilClearRef.current) {
       return;
@@ -1545,6 +1651,10 @@ export default function PdfEditorApp() {
       initialDistance,
       initialZoom: effectivePdfZoom,
       targetZoom: effectivePdfZoom,
+      viewportAnchor: captureZoomViewportAnchor(
+        (first.x + second.x) / 2,
+        (first.y + second.y) / 2,
+      ),
     };
     suppressTouchUntilClearRef.current = true;
 
@@ -1562,7 +1672,6 @@ export default function PdfEditorApp() {
     )
       return;
 
-    const previousPointer = activeTouchPointersRef.current.get(event.pointerId);
     activeTouchPointersRef.current.set(event.pointerId, {
       x: event.clientX,
       y: event.clientY,
@@ -1573,10 +1682,11 @@ export default function PdfEditorApp() {
     claimPdfTouchGesture(event);
     if (!suppressTouchUntilClearRef.current) {
       const viewer = viewerRef.current;
-      if (viewer && previousPointer) {
-        viewer.scrollBy({
-          left: previousPointer.x - event.clientX,
-          top: previousPointer.y - event.clientY,
+      const panSession = touchPanSessionRef.current;
+      if (viewer && panSession?.pointerId === event.pointerId) {
+        viewer.scrollTo({
+          left: panSession.startScrollLeft + panSession.startX - event.clientX,
+          top: panSession.startScrollTop + panSession.startY - event.clientY,
         });
       }
       return;
@@ -1609,6 +1719,9 @@ export default function PdfEditorApp() {
       return;
 
     activeTouchPointersRef.current.delete(event.pointerId);
+    if (touchPanSessionRef.current?.pointerId === event.pointerId) {
+      touchPanSessionRef.current = null;
+    }
     if (settings.touchDrawingEnabled && !suppressTouchUntilClearRef.current) {
       restoreDrawingViewportAnchor();
       return;
@@ -1621,9 +1734,7 @@ export default function PdfEditorApp() {
     if (session?.active && activeTouchPointersRef.current.size < 2) {
       session.active = false;
       if (Math.abs(session.targetZoom - session.initialZoom) > 0.001) {
-        pendingPinchZoomRef.current = session.targetZoom;
-        setZoomMode("custom");
-        setPdfZoom(session.targetZoom);
+        setAnchoredPdfZoom(session.targetZoom, session.viewportAnchor);
       } else if (pagesRef.current) {
         pagesRef.current.style.transform = "";
         pagesRef.current.style.transformOrigin = "";
@@ -1634,6 +1745,7 @@ export default function PdfEditorApp() {
     if (activeTouchPointersRef.current.size === 0) {
       suppressTouchUntilClearRef.current = false;
       pinchSessionRef.current = null;
+      touchPanSessionRef.current = null;
     }
   };
 
@@ -1652,10 +1764,7 @@ export default function PdfEditorApp() {
   const commitZoomInput = () => {
     const percentage = Number(zoomInput);
     if (Number.isFinite(percentage)) {
-      setPdfZoom(
-        Math.min(MAX_PDF_ZOOM, Math.max(MIN_PDF_ZOOM, percentage / 100)),
-      );
-      setZoomMode("custom");
+      setAnchoredPdfZoom(percentage / 100);
     }
     setIsEditingZoom(false);
   };
