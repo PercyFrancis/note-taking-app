@@ -1163,6 +1163,21 @@ export default function PdfEditorApp() {
     [],
   );
 
+  useLayoutEffect(() => {
+    const scrollPosition = { x: window.scrollX, y: window.scrollY };
+    const root = document.documentElement;
+    const body = document.body;
+    root.classList.add("pdf-editor-scroll-lock");
+    body.classList.add("pdf-editor-scroll-lock");
+    window.scrollTo(0, 0);
+
+    return () => {
+      root.classList.remove("pdf-editor-scroll-lock");
+      body.classList.remove("pdf-editor-scroll-lock");
+      window.scrollTo(scrollPosition.x, scrollPosition.y);
+    };
+  }, []);
+
   const updateSettings = (nextSettings: UserSettings) => {
     settingsChangedRef.current = true;
     setSettings(nextSettings);
@@ -2801,7 +2816,7 @@ export default function PdfEditorApp() {
   return (
     <main
       ref={observePdfEditorRoot}
-      className="fixed inset-0 flex min-h-0 w-full flex-col overflow-hidden overscroll-none bg-slate-100 text-slate-900"
+      className="fixed inset-x-0 top-0 flex h-dvh max-h-dvh min-h-0 w-full flex-col overflow-hidden overscroll-none bg-slate-100 text-slate-900"
       style={{ touchAction: "pan-x pan-y" }}
     >
       <input
