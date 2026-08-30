@@ -110,7 +110,7 @@ export function PdfAnnotationToolbar({
     ? `${isCompact ? "w-20" : "w-28"} h-full min-h-0 self-stretch flex-col overflow-y-auto ${
         dock === "left" ? "border-r" : "border-l"
       }`
-    : `w-full self-stretch flex-nowrap items-center overflow-x-auto ${
+    : `w-full self-stretch flex-wrap items-center ${
         dock === "top" ? "border-b" : "border-t"
       }`;
   const fieldClass = isVertical

@@ -1008,6 +1008,12 @@ export default function PdfEditorApp() {
   const previousPageNumberRef = useRef(pageNumber);
   const fullscreenReturnFocusRef = useRef<HTMLElement | null>(null);
   const viewerScrollRef = useRef({ left: 0, top: 0 });
+  const drawingViewportAnchorRef = useRef<{
+    page: HTMLElement;
+    left: number;
+    top: number;
+  } | null>(null);
+  const drawingAnchorFrameRef = useRef<number | null>(null);
   const wasViewportFullscreenRef = useRef(false);
   const viewerResizeObserverRef = useRef<ResizeObserver | null>(null);
   const viewerWheelListenerRef = useRef<((event: WheelEvent) => void) | null>(
@@ -1156,6 +1162,15 @@ export default function PdfEditorApp() {
       }
     };
   }, [scheduleContinuousActivePageUpdate]);
+
+  useEffect(
+    () => () => {
+      if (drawingAnchorFrameRef.current !== null) {
+        cancelAnimationFrame(drawingAnchorFrameRef.current);
+      }
+    },
+    [],
+  );
 
   useLayoutEffect(() => {
     const pendingZoom = pendingPinchZoomRef.current;
@@ -1435,9 +1450,62 @@ export default function PdfEditorApp() {
     event.nativeEvent.stopImmediatePropagation();
   };
 
+  const captureDrawingViewportAnchor = (
+    event: ReactPointerEvent<HTMLElement>,
+  ) => {
+    if (
+      annotationToolbar.tool !== "freedraw" ||
+      (event.pointerType !== "pen" &&
+        !(event.pointerType === "touch" && settings.touchDrawingEnabled))
+    )
+      return;
+    const target = event.target;
+    const page =
+      target instanceof Element
+        ? target.closest<HTMLElement>("[data-pdf-page-number]")
+        : null;
+    if (!page) return;
+    const bounds = page.getBoundingClientRect();
+    drawingViewportAnchorRef.current = {
+      page,
+      left: bounds.left,
+      top: bounds.top,
+    };
+    if (drawingAnchorFrameRef.current !== null) {
+      cancelAnimationFrame(drawingAnchorFrameRef.current);
+      drawingAnchorFrameRef.current = null;
+    }
+  };
+
+  const restoreDrawingViewportAnchor = () => {
+    const anchor = drawingViewportAnchorRef.current;
+    drawingViewportAnchorRef.current = null;
+    if (!anchor) return;
+
+    const restore = () => {
+      const viewer = viewerRef.current;
+      if (!viewer || !anchor.page.isConnected) return;
+      const bounds = anchor.page.getBoundingClientRect();
+      const leftDelta = bounds.left - anchor.left;
+      const topDelta = bounds.top - anchor.top;
+      if (Math.abs(leftDelta) > 0.5 || Math.abs(topDelta) > 0.5) {
+        viewer.scrollBy({ left: leftDelta, top: topDelta });
+      }
+    };
+
+    drawingAnchorFrameRef.current = requestAnimationFrame(() => {
+      restore();
+      drawingAnchorFrameRef.current = requestAnimationFrame(() => {
+        drawingAnchorFrameRef.current = null;
+        restore();
+      });
+    });
+  };
+
   const handlePdfPointerDownCapture = (
     event: ReactPointerEvent<HTMLElement>,
   ) => {
+    captureDrawingViewportAnchor(event);
     if (
       event.pointerType !== "touch" ||
       !pagesRef.current?.contains(event.target as Node)
@@ -1461,6 +1529,7 @@ export default function PdfEditorApp() {
     }
     claimPdfTouchGesture(event);
     if (activeTouchPointersRef.current.size < 2) return;
+    drawingViewportAnchorRef.current = null;
     if (suppressTouchUntilClearRef.current) {
       return;
     }
@@ -1532,6 +1601,7 @@ export default function PdfEditorApp() {
   const handlePdfPointerEndCapture = (
     event: ReactPointerEvent<HTMLElement>,
   ) => {
+    if (event.pointerType === "pen") restoreDrawingViewportAnchor();
     if (
       event.pointerType !== "touch" ||
       !activeTouchPointersRef.current.has(event.pointerId)
@@ -1540,6 +1610,7 @@ export default function PdfEditorApp() {
 
     activeTouchPointersRef.current.delete(event.pointerId);
     if (settings.touchDrawingEnabled && !suppressTouchUntilClearRef.current) {
+      restoreDrawingViewportAnchor();
       return;
     }
     claimPdfTouchGesture(event);
@@ -2562,7 +2633,7 @@ export default function PdfEditorApp() {
                 <section
                   ref={observeViewer}
                   data-pdf-viewer
-                  className="min-h-0 min-w-0 flex-1 overscroll-contain overflow-auto p-4"
+                  className="min-h-0 min-w-0 flex-1 overscroll-contain overflow-auto p-4 [overflow-anchor:none]"
                   onScroll={(event) => {
                     viewerScrollRef.current = {
                       left: event.currentTarget.scrollLeft,
