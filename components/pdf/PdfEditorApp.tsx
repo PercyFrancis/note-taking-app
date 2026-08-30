@@ -25,7 +25,6 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
@@ -82,6 +81,7 @@ import {
 } from "@/lib/pdf";
 import {
   applyAppearance,
+  DEFAULT_PDF_MAX_ZOOM_PERCENT,
   loadLocalSettings,
   saveLocalSettings,
 } from "@/lib/settings";
@@ -140,7 +140,6 @@ const MULTIPART_UPLOAD_THRESHOLD_BYTES = 4 * 1024 * 1024;
 const EXPORT_PADDING_PX = 8;
 const ANNOTATION_TOOLBAR_GUTTER_PX = 32;
 const MIN_PDF_ZOOM = 0.25;
-const MAX_PDF_ZOOM = 3;
 
 function loadImageDimensions(source: File | string) {
   return new Promise<{ width: number; height: number }>((resolve, reject) => {
@@ -478,15 +477,13 @@ function PdfAnnotationCanvas({
   const canonicalZoomRef = useRef<AppState["zoom"]>(
     parseScene(scene)?.appState.zoom ?? ({ value: 1 } as AppState["zoom"]),
   );
-  const initialData = useMemo(
-    () =>
-      annotationInitialData(
-        parseScene(latestRef.current || initialSceneRef.current),
-        viewerZoom,
-        toolbarStateRef.current,
-        isTouchDrawingEnabled,
-      ),
-    [isTouchDrawingEnabled, viewerZoom],
+  const [initialData] = useState(() =>
+    annotationInitialData(
+      parseScene(latestRef.current || initialSceneRef.current),
+      viewerZoom,
+      toolbarStateRef.current,
+      isTouchDrawingEnabled,
+    ),
   );
   onSaveRef.current = onSave;
   onDraftChangeRef.current = onDraftChange;
@@ -640,7 +637,22 @@ function PdfAnnotationCanvas({
   );
 
   useLayoutEffect(() => {
-    if (width > 0 && height > 0 && viewerZoom > 0) refreshCoordinates();
+    if (width <= 0 || height <= 0 || viewerZoom <= 0) return;
+    const api = apiRef.current;
+    if (api) {
+      const canonicalZoom = canonicalZoomRef.current;
+      const scaledZoom = {
+        ...canonicalZoom,
+        value: (canonicalZoom.value * viewerZoom) as AppState["zoom"]["value"],
+      };
+      if (Math.abs(api.getAppState().zoom.value - scaledZoom.value) > 0.001) {
+        api.updateScene({
+          appState: { zoom: scaledZoom },
+          captureUpdate: "NEVER",
+        });
+      }
+    }
+    refreshCoordinates();
   }, [height, refreshCoordinates, viewerZoom, width]);
 
   useEffect(() => {
@@ -704,7 +716,6 @@ function PdfAnnotationCanvas({
       }}
     >
       <Excalidraw
-        key={`viewer-zoom-${viewerZoom}`}
         initialData={initialData}
         excalidrawAPI={handleExcalidrawApi}
         detectScroll={false}
@@ -1015,6 +1026,8 @@ export default function PdfEditorApp() {
     initialDistance: number;
     initialZoom: number;
     targetZoom: number;
+    initialCenterX: number;
+    initialCenterY: number;
     viewportAnchor: PdfZoomViewportAnchor | null;
   } | null>(null);
   const suppressTouchUntilClearRef = useRef(false);
@@ -1112,14 +1125,17 @@ export default function PdfEditorApp() {
     zoomInputRef.current?.focus();
     zoomInputRef.current?.select();
   }, [isEditingZoom]);
+  const maxPdfZoom =
+    (settings.pdfMaxZoomPercent ?? DEFAULT_PDF_MAX_ZOOM_PERCENT) / 100;
   const fitWidthZoom = Math.min(
-    MAX_PDF_ZOOM,
+    maxPdfZoom,
     Math.max(
       MIN_PDF_ZOOM,
       viewerWidth > 0 ? (viewerWidth - 32) / activePageWidth : 1,
     ),
   );
-  const effectivePdfZoom = zoomMode === "fit-width" ? fitWidthZoom : pdfZoom;
+  const effectivePdfZoom =
+    zoomMode === "fit-width" ? fitWidthZoom : Math.min(pdfZoom, maxPdfZoom);
   const getViewerElement = useCallback(() => viewerRef.current, []);
   const captureZoomViewportAnchor = useCallback(
     (clientX?: number, clientY?: number): PdfZoomViewportAnchor | null => {
@@ -1259,8 +1275,11 @@ export default function PdfEditorApp() {
       cancelAnimationFrame(zoomAnchorFrameRef.current);
     }
     zoomAnchorFrameRef.current = requestAnimationFrame(() => {
-      zoomAnchorFrameRef.current = null;
       restoreAnchor();
+      zoomAnchorFrameRef.current = requestAnimationFrame(() => {
+        zoomAnchorFrameRef.current = null;
+        restoreAnchor();
+      });
     });
   }, [effectivePdfZoom]);
 
@@ -1520,7 +1539,7 @@ export default function PdfEditorApp() {
     viewportAnchor = captureZoomViewportAnchor(),
   ) => {
     const normalizedZoom = Math.min(
-      MAX_PDF_ZOOM,
+      maxPdfZoom,
       Math.max(MIN_PDF_ZOOM, nextZoom),
     );
     if (Math.abs(normalizedZoom - effectivePdfZoom) <= 0.001) return;
@@ -1645,21 +1664,22 @@ export default function PdfEditorApp() {
       1,
       Math.hypot(second.x - first.x, second.y - first.y),
     );
+    const initialCenterX = (first.x + second.x) / 2;
+    const initialCenterY = (first.y + second.y) / 2;
 
     pinchSessionRef.current = {
       active: true,
       initialDistance,
       initialZoom: effectivePdfZoom,
       targetZoom: effectivePdfZoom,
-      viewportAnchor: captureZoomViewportAnchor(
-        (first.x + second.x) / 2,
-        (first.y + second.y) / 2,
-      ),
+      initialCenterX,
+      initialCenterY,
+      viewportAnchor: captureZoomViewportAnchor(initialCenterX, initialCenterY),
     };
     suppressTouchUntilClearRef.current = true;
 
     const pagesBounds = pagesRef.current.getBoundingClientRect();
-    pagesRef.current.style.transformOrigin = `${(first.x + second.x) / 2 - pagesBounds.left}px ${(first.y + second.y) / 2 - pagesBounds.top}px`;
+    pagesRef.current.style.transformOrigin = `${initialCenterX - pagesBounds.left}px ${initialCenterY - pagesBounds.top}px`;
     pagesRef.current.style.willChange = "transform";
   };
 
@@ -1696,15 +1716,21 @@ export default function PdfEditorApp() {
     if (!session?.active || activeTouchPointersRef.current.size < 2) return;
     const [first, second] = Array.from(activeTouchPointersRef.current.values());
     const distance = Math.hypot(second.x - first.x, second.y - first.y);
+    const centerX = (first.x + second.x) / 2;
+    const centerY = (first.y + second.y) / 2;
     session.targetZoom = Math.min(
-      MAX_PDF_ZOOM,
+      maxPdfZoom,
       Math.max(
         MIN_PDF_ZOOM,
         session.initialZoom * (distance / session.initialDistance),
       ),
     );
+    if (session.viewportAnchor) {
+      session.viewportAnchor.clientX = centerX;
+      session.viewportAnchor.clientY = centerY;
+    }
     if (pagesRef.current) {
-      pagesRef.current.style.transform = `scale(${session.targetZoom / session.initialZoom})`;
+      pagesRef.current.style.transform = `translate(${centerX - session.initialCenterX}px, ${centerY - session.initialCenterY}px) scale(${session.targetZoom / session.initialZoom})`;
     }
   };
 
@@ -2469,7 +2495,7 @@ export default function PdfEditorApp() {
               type="number"
               inputMode="decimal"
               min={MIN_PDF_ZOOM * 100}
-              max={MAX_PDF_ZOOM * 100}
+              max={maxPdfZoom * 100}
               step="1"
               value={zoomInput}
               onChange={(event) => setZoomInput(event.target.value)}

@@ -181,6 +181,13 @@ test("settings validation accepts complete preferences", () => {
     }),
     true,
   );
+  assert.equal(
+    isUserSettings({
+      ...DEFAULT_USER_SETTINGS,
+      pdfMaxZoomPercent: 1000,
+    }),
+    true,
+  );
 });
 
 test("settings validation rejects unknown themes and incomplete values", () => {
@@ -189,4 +196,11 @@ test("settings validation rejects unknown themes and incomplete values", () => {
     false,
   );
   assert.equal(isUserSettings({ theme: "system", accent: "blue" }), false);
+  assert.equal(
+    isUserSettings({
+      ...DEFAULT_USER_SETTINGS,
+      pdfMaxZoomPercent: 1200,
+    }),
+    false,
+  );
 });

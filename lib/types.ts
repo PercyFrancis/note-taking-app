@@ -8,6 +8,7 @@ export interface UserSettings {
   accent: AccentColor;
   touchDrawingEnabled: boolean;
   legacyCanvasToolsVisible: boolean;
+  pdfMaxZoomPercent?: 300 | 500 | 750 | 1000;
 }
 
 export interface UserSettingsResponse {

@@ -5,12 +5,14 @@ export const LEGACY_TOUCH_DRAWING_STORAGE_KEY =
   "note-taking-app:draw-with-touch";
 export const LEGACY_CANVAS_TOOLS_STORAGE_KEY =
   "note-taking-app:show-legacy-drawing-controls";
+export const DEFAULT_PDF_MAX_ZOOM_PERCENT = 1000;
 
 export const DEFAULT_USER_SETTINGS: UserSettings = {
   theme: "original",
   accent: "blue",
   touchDrawingEnabled: false,
   legacyCanvasToolsVisible: false,
+  pdfMaxZoomPercent: DEFAULT_PDF_MAX_ZOOM_PERCENT,
 };
 
 export function isUserSettings(value: unknown): value is UserSettings {
@@ -27,7 +29,12 @@ export function isUserSettings(value: unknown): value is UserSettings {
       settings.accent === "rose" ||
       settings.accent === "amber") &&
     typeof settings.touchDrawingEnabled === "boolean" &&
-    typeof settings.legacyCanvasToolsVisible === "boolean"
+    typeof settings.legacyCanvasToolsVisible === "boolean" &&
+    (settings.pdfMaxZoomPercent === undefined ||
+      settings.pdfMaxZoomPercent === 300 ||
+      settings.pdfMaxZoomPercent === 500 ||
+      settings.pdfMaxZoomPercent === 750 ||
+      settings.pdfMaxZoomPercent === 1000)
   );
 }
 

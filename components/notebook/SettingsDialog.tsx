@@ -5,6 +5,7 @@ import {
   primaryButtonClass,
   secondaryButtonClass,
 } from "@/components/ui/buttonStyles";
+import { DEFAULT_PDF_MAX_ZOOM_PERCENT } from "@/lib/settings";
 import type { AccentColor, ThemeMode, UserSettings } from "@/lib/types";
 
 type SettingsSection = "appearance" | "editor" | "shortcuts" | "data";
@@ -251,6 +252,34 @@ export default function SettingsDialog({
                       update("touchDrawingEnabled", checked)
                     }
                   />
+                  <label className="flex items-start justify-between gap-5 rounded-lg border border-slate-200 bg-white p-4">
+                    <span>
+                      <span className="block text-sm font-medium text-slate-900">
+                        Maximum PDF zoom
+                      </span>
+                      <span className="mt-1 block text-sm text-slate-500">
+                        Set the largest zoom level available in the PDF editor.
+                      </span>
+                    </span>
+                    <select
+                      value={
+                        settings.pdfMaxZoomPercent ??
+                        DEFAULT_PDF_MAX_ZOOM_PERCENT
+                      }
+                      className="rounded border border-slate-300 bg-white px-2 py-1 text-sm"
+                      onChange={(event) =>
+                        update(
+                          "pdfMaxZoomPercent",
+                          Number(event.target.value) as 300 | 500 | 750 | 1000,
+                        )
+                      }
+                    >
+                      <option value={300}>300%</option>
+                      <option value={500}>500%</option>
+                      <option value={750}>750%</option>
+                      <option value={1000}>1000%</option>
+                    </select>
+                  </label>
                 </div>
               </div>
             )}
