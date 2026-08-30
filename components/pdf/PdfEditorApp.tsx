@@ -140,6 +140,37 @@ const MULTIPART_UPLOAD_THRESHOLD_BYTES = 4 * 1024 * 1024;
 const EXPORT_PADDING_PX = 8;
 const ANNOTATION_TOOLBAR_GUTTER_PX = 32;
 const MIN_PDF_ZOOM = 0.25;
+const PDF_ANNOTATION_EXPORT_SCALES = [1, 2, 3, 4, 6, 8, 12, 16] as const;
+type PdfAnnotationExportScale = (typeof PDF_ANNOTATION_EXPORT_SCALES)[number];
+const PDF_EXPORT_TILE_SIZE_PX = 2048;
+
+function loadSvgImage(svg: SVGSVGElement) {
+  return new Promise<{ image: HTMLImageElement; url: string }>(
+    (resolve, reject) => {
+      const url = URL.createObjectURL(
+        new Blob([new XMLSerializer().serializeToString(svg)], {
+          type: "image/svg+xml;charset=utf-8",
+        }),
+      );
+      const image = new Image();
+      image.onload = () => resolve({ image, url });
+      image.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("Could not rasterize the annotation SVG"));
+      };
+      image.src = url;
+    },
+  );
+}
+
+function canvasToPngBlob(canvas: HTMLCanvasElement) {
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error("The browser could not create an annotation tile"));
+    }, "image/png");
+  });
+}
 
 function loadImageDimensions(source: File | string) {
   return new Promise<{ width: number; height: number }>((resolve, reject) => {
@@ -1024,6 +1055,8 @@ export default function PdfEditorApp() {
   const [status, setStatus] = useState("Loading…");
   const [isBusy, setIsBusy] = useState(false);
   const [isImageLibraryOpen, setIsImageLibraryOpen] = useState(false);
+  const [annotationExportScale, setAnnotationExportScale] =
+    useState<PdfAnnotationExportScale>(3);
   const [settings, setSettings] = useState<UserSettings>(loadLocalSettings);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsSaveStatus, setSettingsSaveStatus] = useState<
@@ -1054,10 +1087,9 @@ export default function PdfEditorApp() {
     initialDistance: number;
     initialZoom: number;
     targetZoom: number;
-    initialCenterX: number;
-    initialCenterY: number;
     viewportAnchor: PdfZoomViewportAnchor | null;
   } | null>(null);
+  const pinchZoomFrameRef = useRef<number | null>(null);
   const suppressTouchUntilClearRef = useRef(false);
   const pendingPinchZoomRef = useRef<number | null>(null);
   const pendingZoomAnchorRef = useRef<PdfZoomViewportAnchor | null>(null);
@@ -1264,6 +1296,10 @@ export default function PdfEditorApp() {
       }
       if (zoomAnchorFrameRef.current !== null) {
         cancelAnimationFrame(zoomAnchorFrameRef.current);
+      }
+      if (pinchZoomFrameRef.current !== null) {
+        cancelAnimationFrame(pinchZoomFrameRef.current);
+        pinchZoomFrameRef.current = null;
       }
     },
     [],
@@ -1485,6 +1521,10 @@ export default function PdfEditorApp() {
   const realignAnnotationCanvases = useCallback((announce = true) => {
     pendingPinchZoomRef.current = null;
     pinchSessionRef.current = null;
+    if (pinchZoomFrameRef.current !== null) {
+      cancelAnimationFrame(pinchZoomFrameRef.current);
+      pinchZoomFrameRef.current = null;
+    }
     suppressTouchUntilClearRef.current = false;
     activeTouchPointersRef.current.clear();
     touchPanSessionRef.current = null;
@@ -1570,7 +1610,8 @@ export default function PdfEditorApp() {
       maxPdfZoom,
       Math.max(MIN_PDF_ZOOM, nextZoom),
     );
-    if (Math.abs(normalizedZoom - effectivePdfZoom) <= 0.001) return;
+    const scheduledZoom = pendingPinchZoomRef.current ?? effectivePdfZoom;
+    if (Math.abs(normalizedZoom - scheduledZoom) <= 0.001) return;
     pendingPinchZoomRef.current = normalizedZoom;
     pendingZoomAnchorRef.current = viewportAnchor;
     setZoomMode("custom");
@@ -1700,15 +1741,9 @@ export default function PdfEditorApp() {
       initialDistance,
       initialZoom: effectivePdfZoom,
       targetZoom: effectivePdfZoom,
-      initialCenterX,
-      initialCenterY,
       viewportAnchor: captureZoomViewportAnchor(initialCenterX, initialCenterY),
     };
     suppressTouchUntilClearRef.current = true;
-
-    const pagesBounds = pagesRef.current.getBoundingClientRect();
-    pagesRef.current.style.transformOrigin = `${initialCenterX - pagesBounds.left}px ${initialCenterY - pagesBounds.top}px`;
-    pagesRef.current.style.willChange = "transform";
   };
 
   const handlePdfPointerMoveCapture = (
@@ -1757,9 +1792,16 @@ export default function PdfEditorApp() {
       session.viewportAnchor.clientX = centerX;
       session.viewportAnchor.clientY = centerY;
     }
-    if (pagesRef.current) {
-      pagesRef.current.style.transform = `translate(${centerX - session.initialCenterX}px, ${centerY - session.initialCenterY}px) scale(${session.targetZoom / session.initialZoom})`;
-    }
+    if (pinchZoomFrameRef.current !== null) return;
+    pinchZoomFrameRef.current = requestAnimationFrame(() => {
+      pinchZoomFrameRef.current = null;
+      const liveSession = pinchSessionRef.current;
+      if (!liveSession?.active) return;
+      setAnchoredPdfZoom(
+        liveSession.targetZoom,
+        liveSession.viewportAnchor ? { ...liveSession.viewportAnchor } : null,
+      );
+    });
   };
 
   const handlePdfPointerEndCapture = (
@@ -1787,8 +1829,15 @@ export default function PdfEditorApp() {
     const session = pinchSessionRef.current;
     if (session?.active && activeTouchPointersRef.current.size < 2) {
       session.active = false;
+      if (pinchZoomFrameRef.current !== null) {
+        cancelAnimationFrame(pinchZoomFrameRef.current);
+        pinchZoomFrameRef.current = null;
+      }
       if (Math.abs(session.targetZoom - session.initialZoom) > 0.001) {
-        setAnchoredPdfZoom(session.targetZoom, session.viewportAnchor);
+        setAnchoredPdfZoom(
+          session.targetZoom,
+          session.viewportAnchor ? { ...session.viewportAnchor } : null,
+        );
       } else if (pagesRef.current) {
         pagesRef.current.style.transform = "";
         pagesRef.current.style.transformOrigin = "";
@@ -2363,11 +2412,11 @@ export default function PdfEditorApp() {
   const exportFlattened = async () => {
     if (!activeDocument) return;
     setIsBusy(true);
-    setStatus("Flattening annotations…");
+    setStatus(`Flattening annotations at ${annotationExportScale}×…`);
     try {
       const { PDFDocument } = await import("pdf-lib");
       const pdf = await PDFDocument.load(await getPdfBytes());
-      const { exportToBlob, getCommonBounds } = await import(
+      const { exportToBlob, exportToSvg, getCommonBounds } = await import(
         "@excalidraw/excalidraw"
       );
       const scenesByPage = new Map(
@@ -2391,37 +2440,110 @@ export default function PdfEditorApp() {
         if (!scene || elements.length === 0) continue;
         const [x1, y1, x2, y2] = getCommonBounds(elements);
         if (x2 <= x1 || y2 <= y1) continue;
-        const overlay = await exportToBlob({
-          elements,
-          files: scene.files,
-          appState: {
-            viewBackgroundColor: "transparent",
-            exportBackground: false,
-            exportWithDarkMode: false,
-            exportScale: 1,
-          },
-          mimeType: "image/png",
-          quality: 1,
-          exportPadding: EXPORT_PADDING_PX,
-        });
-        const image = await pdf.embedPng(await overlay.arrayBuffer());
         const page = pdf.getPage(annotationPageNumber - 1);
         const zoom = Math.max(0.01, scene.appState.zoom?.value ?? 1);
-        page.drawImage(
-          image,
-          getPdfAnnotationPlacement({
-            bounds: [
-              x1 - EXPORT_PADDING_PX,
-              y1 - EXPORT_PADDING_PX,
-              x2 + EXPORT_PADDING_PX,
-              y2 + EXPORT_PADDING_PX,
-            ],
-            scrollX: scene.appState.scrollX,
-            scrollY: scene.appState.scrollY,
-            zoom,
-            pageHeight: page.getHeight(),
-          }),
-        );
+        const placement = getPdfAnnotationPlacement({
+          bounds: [
+            x1 - EXPORT_PADDING_PX,
+            y1 - EXPORT_PADDING_PX,
+            x2 + EXPORT_PADDING_PX,
+            y2 + EXPORT_PADDING_PX,
+          ],
+          scrollX: scene.appState.scrollX,
+          scrollY: scene.appState.scrollY,
+          zoom,
+          pageHeight: page.getHeight(),
+        });
+        const exportAppState = {
+          viewBackgroundColor: "transparent",
+          exportBackground: false,
+          exportWithDarkMode: false,
+        };
+
+        if (annotationExportScale === 1) {
+          const overlay = await exportToBlob({
+            elements,
+            files: scene.files,
+            appState: exportAppState,
+            mimeType: "image/png",
+            exportPadding: EXPORT_PADDING_PX,
+          });
+          const image = await pdf.embedPng(await overlay.arrayBuffer());
+          page.drawImage(image, placement);
+          continue;
+        }
+
+        const svg = await exportToSvg({
+          elements,
+          files: scene.files,
+          appState: exportAppState,
+          exportPadding: EXPORT_PADDING_PX,
+        });
+        const sourceViewBox = svg.viewBox.baseVal;
+        const sceneWidth =
+          sourceViewBox.width || x2 - x1 + EXPORT_PADDING_PX * 2;
+        const sceneHeight =
+          sourceViewBox.height || y2 - y1 + EXPORT_PADDING_PX * 2;
+        const pixelWidth = Math.ceil(sceneWidth * annotationExportScale);
+        const pixelHeight = Math.ceil(sceneHeight * annotationExportScale);
+        for (
+          let tileTop = 0;
+          tileTop < pixelHeight;
+          tileTop += PDF_EXPORT_TILE_SIZE_PX
+        ) {
+          for (
+            let tileLeft = 0;
+            tileLeft < pixelWidth;
+            tileLeft += PDF_EXPORT_TILE_SIZE_PX
+          ) {
+            const tileWidth = Math.min(
+              PDF_EXPORT_TILE_SIZE_PX,
+              pixelWidth - tileLeft,
+            );
+            const tileHeight = Math.min(
+              PDF_EXPORT_TILE_SIZE_PX,
+              pixelHeight - tileTop,
+            );
+            const tileSvg = svg.cloneNode(true) as SVGSVGElement;
+            tileSvg.setAttribute(
+              "viewBox",
+              `${sourceViewBox.x + tileLeft / annotationExportScale} ${
+                sourceViewBox.y + tileTop / annotationExportScale
+              } ${tileWidth / annotationExportScale} ${
+                tileHeight / annotationExportScale
+              }`,
+            );
+            tileSvg.setAttribute("width", String(tileWidth));
+            tileSvg.setAttribute("height", String(tileHeight));
+            const { image: tileSvgImage, url: tileSvgUrl } =
+              await loadSvgImage(tileSvg);
+            const canvas = document.createElement("canvas");
+            canvas.width = tileWidth;
+            canvas.height = tileHeight;
+            const context = canvas.getContext("2d");
+            if (!context)
+              throw new Error("The browser could not create an export canvas");
+            try {
+              context.drawImage(tileSvgImage, 0, 0, tileWidth, tileHeight);
+            } finally {
+              URL.revokeObjectURL(tileSvgUrl);
+            }
+            const tileBlob = await canvasToPngBlob(canvas);
+            const tileImage = await pdf.embedPng(await tileBlob.arrayBuffer());
+            const pdfTileWidth = placement.width * (tileWidth / pixelWidth);
+            const pdfTileHeight = placement.height * (tileHeight / pixelHeight);
+            page.drawImage(tileImage, {
+              x: placement.x + placement.width * (tileLeft / pixelWidth),
+              y:
+                placement.y +
+                placement.height * (1 - (tileTop + tileHeight) / pixelHeight),
+              width: pdfTileWidth,
+              height: pdfTileHeight,
+            });
+            canvas.width = 0;
+            canvas.height = 0;
+          }
+        }
       }
       const result = await pdf.save();
       downloadBlob(
@@ -2429,8 +2551,11 @@ export default function PdfEditorApp() {
         `${activeDocument.title}-annotated.pdf`,
       );
       setStatus("Saved");
-    } catch {
-      setStatus("Export failed");
+    } catch (error) {
+      console.error("Annotated PDF export failed", error);
+      setStatus(
+        `Export failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
     } finally {
       setIsBusy(false);
     }
@@ -2605,14 +2730,44 @@ export default function PdfEditorApp() {
       >
         Editable project
       </button>
-      <button
-        type="button"
-        disabled={isBusy}
-        className="rounded border px-2 py-1 text-sm"
-        onClick={exportFlattened}
-      >
-        Annotated PDF
-      </button>
+      <div className="flex items-stretch">
+        <button
+          type="button"
+          disabled={isBusy}
+          className="rounded-l border px-2 py-1 text-sm"
+          onClick={exportFlattened}
+        >
+          Annotated PDF
+        </button>
+        <label
+          className="flex items-center rounded-r border border-l-0 bg-white text-xs"
+          title="Higher quality produces sharper annotations but uses more memory and creates a larger PDF. 8×–16× may exceed mobile browser limits for large drawings."
+        >
+          <span className="sr-only">Annotated PDF export quality</span>
+          <select
+            value={annotationExportScale}
+            disabled={isBusy}
+            className="bg-transparent px-1 py-1.5 outline-none disabled:opacity-50"
+            onChange={(event) =>
+              setAnnotationExportScale(
+                Number(event.target.value) as PdfAnnotationExportScale,
+              )
+            }
+            aria-label="Annotated PDF export quality"
+          >
+            {PDF_ANNOTATION_EXPORT_SCALES.map((scale) => (
+              <option key={scale} value={scale}>
+                {scale}×
+                {scale === 3
+                  ? " (recommended)"
+                  : scale >= 8
+                    ? " (high memory)"
+                    : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
       <button
         type="button"
         className="rounded border border-red-200 px-2 py-1 text-sm text-red-700"
