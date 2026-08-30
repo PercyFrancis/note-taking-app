@@ -1092,9 +1092,10 @@ export default function PdfEditorApp() {
     initialDistance: number;
     initialZoom: number;
     targetZoom: number;
+    initialCenterX: number;
+    initialCenterY: number;
     viewportAnchor: PdfZoomViewportAnchor | null;
   } | null>(null);
-  const pinchZoomFrameRef = useRef<number | null>(null);
   const suppressTouchUntilClearRef = useRef(false);
   const pendingPinchZoomRef = useRef<number | null>(null);
   const pendingZoomAnchorRef = useRef<PdfZoomViewportAnchor | null>(null);
@@ -1301,10 +1302,6 @@ export default function PdfEditorApp() {
       }
       if (zoomAnchorFrameRef.current !== null) {
         cancelAnimationFrame(zoomAnchorFrameRef.current);
-      }
-      if (pinchZoomFrameRef.current !== null) {
-        cancelAnimationFrame(pinchZoomFrameRef.current);
-        pinchZoomFrameRef.current = null;
       }
     },
     [],
@@ -1526,10 +1523,6 @@ export default function PdfEditorApp() {
   const realignAnnotationCanvases = useCallback((announce = true) => {
     pendingPinchZoomRef.current = null;
     pinchSessionRef.current = null;
-    if (pinchZoomFrameRef.current !== null) {
-      cancelAnimationFrame(pinchZoomFrameRef.current);
-      pinchZoomFrameRef.current = null;
-    }
     suppressTouchUntilClearRef.current = false;
     activeTouchPointersRef.current.clear();
     touchPanSessionRef.current = null;
@@ -1615,8 +1608,7 @@ export default function PdfEditorApp() {
       maxPdfZoom,
       Math.max(MIN_PDF_ZOOM, nextZoom),
     );
-    const scheduledZoom = pendingPinchZoomRef.current ?? effectivePdfZoom;
-    if (Math.abs(normalizedZoom - scheduledZoom) <= 0.001) return;
+    if (Math.abs(normalizedZoom - effectivePdfZoom) <= 0.001) return;
     pendingPinchZoomRef.current = normalizedZoom;
     pendingZoomAnchorRef.current = viewportAnchor;
     setZoomMode("custom");
@@ -1746,9 +1738,15 @@ export default function PdfEditorApp() {
       initialDistance,
       initialZoom: effectivePdfZoom,
       targetZoom: effectivePdfZoom,
+      initialCenterX,
+      initialCenterY,
       viewportAnchor: captureZoomViewportAnchor(initialCenterX, initialCenterY),
     };
     suppressTouchUntilClearRef.current = true;
+
+    const pagesBounds = pagesRef.current.getBoundingClientRect();
+    pagesRef.current.style.transformOrigin = `${initialCenterX - pagesBounds.left}px ${initialCenterY - pagesBounds.top}px`;
+    pagesRef.current.style.willChange = "transform";
   };
 
   const handlePdfPointerMoveCapture = (
@@ -1797,16 +1795,9 @@ export default function PdfEditorApp() {
       session.viewportAnchor.clientX = centerX;
       session.viewportAnchor.clientY = centerY;
     }
-    if (pinchZoomFrameRef.current !== null) return;
-    pinchZoomFrameRef.current = requestAnimationFrame(() => {
-      pinchZoomFrameRef.current = null;
-      const liveSession = pinchSessionRef.current;
-      if (!liveSession?.active) return;
-      setAnchoredPdfZoom(
-        liveSession.targetZoom,
-        liveSession.viewportAnchor ? { ...liveSession.viewportAnchor } : null,
-      );
-    });
+    if (pagesRef.current) {
+      pagesRef.current.style.transform = `translate(${centerX - session.initialCenterX}px, ${centerY - session.initialCenterY}px) scale(${session.targetZoom / session.initialZoom})`;
+    }
   };
 
   const handlePdfPointerEndCapture = (
@@ -1834,15 +1825,8 @@ export default function PdfEditorApp() {
     const session = pinchSessionRef.current;
     if (session?.active && activeTouchPointersRef.current.size < 2) {
       session.active = false;
-      if (pinchZoomFrameRef.current !== null) {
-        cancelAnimationFrame(pinchZoomFrameRef.current);
-        pinchZoomFrameRef.current = null;
-      }
       if (Math.abs(session.targetZoom - session.initialZoom) > 0.001) {
-        setAnchoredPdfZoom(
-          session.targetZoom,
-          session.viewportAnchor ? { ...session.viewportAnchor } : null,
-        );
+        setAnchoredPdfZoom(session.targetZoom, session.viewportAnchor);
       } else if (pagesRef.current) {
         pagesRef.current.style.transform = "";
         pagesRef.current.style.transformOrigin = "";
