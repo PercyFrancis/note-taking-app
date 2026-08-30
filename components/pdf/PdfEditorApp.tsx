@@ -74,7 +74,6 @@ import {
   DEFAULT_PDF_MAX_PAGES,
   DEFAULT_PDF_MAX_UPLOAD_BYTES,
   getGuestPdfLimits,
-  getPdfAnnotationPlacement,
   type PdfAnnotationRecord,
   type PdfDocumentRecord,
   sanitizePdfFilename,
@@ -137,7 +136,6 @@ interface PdfZoomViewportAnchor {
 
 const SAVE_DELAY_MS = 750;
 const MULTIPART_UPLOAD_THRESHOLD_BYTES = 4 * 1024 * 1024;
-const EXPORT_PADDING_PX = 8;
 const ANNOTATION_TOOLBAR_GUTTER_PX = 32;
 const MIN_PDF_ZOOM = 0.25;
 const PDF_ANNOTATION_EXPORT_SCALES = [1, 2, 3, 4, 6, 8, 12, 16] as const;
@@ -2420,9 +2418,8 @@ export default function PdfEditorApp() {
     try {
       const { PDFDocument } = await import("pdf-lib");
       const pdf = await PDFDocument.load(await getPdfBytes());
-      const { exportToBlob, exportToSvg, getCommonBounds } = await import(
-        "@excalidraw/excalidraw"
-      );
+      const { convertToExcalidrawElements, exportToBlob, exportToSvg } =
+        await import("@excalidraw/excalidraw");
       const scenesByPage = new Map(
         Object.values(annotations).map((annotation) => [
           annotation.pageNumber,
@@ -2456,34 +2453,36 @@ export default function PdfEditorApp() {
         const elements =
           scene?.elements.filter((element) => !element.isDeleted) ?? [];
         if (!scene || elements.length === 0) continue;
-        const [x1, y1, x2, y2] = getCommonBounds(elements);
-        if (x2 <= x1 || y2 <= y1) continue;
         const page = pdf.getPage(annotationPageNumber - 1);
         const zoom = Math.max(0.01, scene.appState.zoom?.value ?? 1);
-        const placement = getPdfAnnotationPlacement({
-          bounds: [
-            x1 - EXPORT_PADDING_PX,
-            y1 - EXPORT_PADDING_PX,
-            x2 + EXPORT_PADDING_PX,
-            y2 + EXPORT_PADDING_PX,
-          ],
-          scrollX: scene.appState.scrollX,
-          scrollY: scene.appState.scrollY,
-          zoom,
-          pageHeight: page.getHeight(),
-        });
+        const frameWidth = page.getWidth() / zoom;
+        const frameHeight = page.getHeight() / zoom;
+        const [exportingFrame] = convertToExcalidrawElements([
+          {
+            type: "frame",
+            x: -scene.appState.scrollX,
+            y: -scene.appState.scrollY,
+            width: frameWidth,
+            height: frameHeight,
+            children: [],
+          },
+        ]);
+        const placement = {
+          x: 0,
+          y: 0,
+          width: page.getWidth(),
+          height: page.getHeight(),
+        };
         const exportAppState = {
           viewBackgroundColor: "transparent",
           exportBackground: false,
           exportWithDarkMode: false,
         };
-        const estimatedWidth = x2 - x1 + EXPORT_PADDING_PX * 2;
-        const estimatedHeight = y2 - y1 + EXPORT_PADDING_PX * 2;
         const estimatedPixelWidth = Math.ceil(
-          estimatedWidth * annotationExportScale,
+          frameWidth * annotationExportScale,
         );
         const estimatedPixelHeight = Math.ceil(
-          estimatedHeight * annotationExportScale,
+          frameHeight * annotationExportScale,
         );
         const canUseSingleCanvas =
           annotationExportScale === 1 ||
@@ -2498,7 +2497,8 @@ export default function PdfEditorApp() {
               files: scene.files,
               appState: exportAppState,
               mimeType: "image/png",
-              exportPadding: EXPORT_PADDING_PX,
+              exportPadding: 0,
+              exportingFrame,
               ...(annotationExportScale === 1
                 ? {}
                 : {
@@ -2513,7 +2513,6 @@ export default function PdfEditorApp() {
             page.drawImage(image, placement);
             continue;
           } catch (error) {
-            if (annotationExportScale === 1) throw error;
             console.warn(
               "Single-canvas annotation export failed; using tiled export",
               error,
@@ -2525,14 +2524,13 @@ export default function PdfEditorApp() {
           elements,
           files: scene.files,
           appState: exportAppState,
-          exportPadding: EXPORT_PADDING_PX,
+          exportPadding: 0,
+          exportingFrame,
           skipInliningFonts: true,
         });
         const sourceViewBox = svg.viewBox.baseVal;
-        const sceneWidth =
-          sourceViewBox.width || x2 - x1 + EXPORT_PADDING_PX * 2;
-        const sceneHeight =
-          sourceViewBox.height || y2 - y1 + EXPORT_PADDING_PX * 2;
+        const sceneWidth = sourceViewBox.width || frameWidth;
+        const sceneHeight = sourceViewBox.height || frameHeight;
         const pixelWidth = Math.ceil(sceneWidth * annotationExportScale);
         const pixelHeight = Math.ceil(sceneHeight * annotationExportScale);
         for (let tileTop = 0; tileTop < pixelHeight; tileTop += tileSize) {
