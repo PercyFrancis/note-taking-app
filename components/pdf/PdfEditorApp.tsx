@@ -196,6 +196,8 @@ function downloadBlob(blob: Blob, filename: string) {
 
 function annotationInitialData(
   scene: StoredPdfScene | null,
+  width: number,
+  height: number,
   viewerZoom: number,
   toolbarState: PdfAnnotationToolbarState,
   isTouchDrawingEnabled: boolean,
@@ -207,6 +209,8 @@ function annotationInitialData(
     files: scene?.files ?? {},
     appState: {
       ...(scene?.appState ?? {}),
+      width,
+      height,
       zoom: {
         ...canonicalZoom,
         value: (canonicalZoom.value * viewerZoom) as AppState["zoom"]["value"],
@@ -474,12 +478,15 @@ function PdfAnnotationCanvas({
   const coordinateRefreshFrameRef = useRef<number | null>(null);
   const isPointerActiveRef = useRef(false);
   const hasDeferredCoordinateRefreshRef = useRef(false);
+  const viewportRef = useRef({ width, height, viewerZoom });
   const canonicalZoomRef = useRef<AppState["zoom"]>(
     parseScene(scene)?.appState.zoom ?? ({ value: 1 } as AppState["zoom"]),
   );
   const [initialData] = useState(() =>
     annotationInitialData(
       parseScene(latestRef.current || initialSceneRef.current),
+      width,
+      height,
       viewerZoom,
       toolbarStateRef.current,
       isTouchDrawingEnabled,
@@ -611,6 +618,39 @@ function PdfAnnotationCanvas({
     if (hasDeferredCoordinateRefreshRef.current) refreshCoordinates();
   }, [refreshCoordinates]);
 
+  const synchronizeViewport = useCallback(
+    (api: ExcalidrawImperativeAPI | null = apiRef.current) => {
+      if (!api || apiRef.current !== api) return;
+      const {
+        width: nextWidth,
+        height: nextHeight,
+        viewerZoom: nextZoom,
+      } = viewportRef.current;
+      if (nextWidth <= 0 || nextHeight <= 0 || nextZoom <= 0) return;
+      const canonicalZoom = canonicalZoomRef.current;
+      const scaledZoom = {
+        ...canonicalZoom,
+        value: (canonicalZoom.value * nextZoom) as AppState["zoom"]["value"],
+      };
+      const appState = api.getAppState();
+      if (
+        Math.abs(appState.zoom.value - scaledZoom.value) <= 0.001 &&
+        Math.abs(appState.width - nextWidth) <= 0.5 &&
+        Math.abs(appState.height - nextHeight) <= 0.5
+      )
+        return;
+      api.updateScene({
+        appState: {
+          height: nextHeight,
+          width: nextWidth,
+          zoom: scaledZoom,
+        },
+        captureUpdate: "NEVER",
+      });
+    },
+    [],
+  );
+
   useLayoutEffect(() => {
     // Expanded toolbar controls can wrap differently for each active tool,
     // shifting the PDF without changing the annotation layer's dimensions.
@@ -628,37 +668,20 @@ function PdfAnnotationCanvas({
         editorReadyFrameRef.current = null;
         const element = layerRef.current;
         if (apiRef.current !== api || !element) return;
+        synchronizeViewport(api);
         refreshCoordinates(api);
         applyPdfToolbarState(api, toolbarStateRef.current);
         onEditorReadyRef.current({ api, element, flush });
       });
     },
-    [flush, refreshCoordinates],
+    [flush, refreshCoordinates, synchronizeViewport],
   );
 
   useLayoutEffect(() => {
-    if (width <= 0 || height <= 0 || viewerZoom <= 0) return;
-    const api = apiRef.current;
-    if (api) {
-      const canonicalZoom = canonicalZoomRef.current;
-      const scaledZoom = {
-        ...canonicalZoom,
-        value: (canonicalZoom.value * viewerZoom) as AppState["zoom"]["value"],
-      };
-      const appState = api.getAppState();
-      if (
-        Math.abs(appState.zoom.value - scaledZoom.value) > 0.001 ||
-        Math.abs(appState.width - width) > 0.5 ||
-        Math.abs(appState.height - height) > 0.5
-      ) {
-        api.updateScene({
-          appState: { height, width, zoom: scaledZoom },
-          captureUpdate: "NEVER",
-        });
-      }
-    }
+    viewportRef.current = { width, height, viewerZoom };
+    synchronizeViewport();
     refreshCoordinates();
-  }, [height, refreshCoordinates, viewerZoom, width]);
+  }, [height, refreshCoordinates, synchronizeViewport, viewerZoom, width]);
 
   useEffect(() => {
     const layer = layerRef.current;
