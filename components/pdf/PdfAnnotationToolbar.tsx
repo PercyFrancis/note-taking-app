@@ -73,11 +73,20 @@ const TOOLS: Array<{
   { value: "eraser", label: "Eraser", shortLabel: "Erase" },
 ];
 
+const COMPACT_TOOLS = new Set<PdfAnnotationTool>([
+  "selection",
+  "freedraw",
+  "text",
+  "eraser",
+]);
+
 export function PdfAnnotationToolbar({
   state,
   dock,
   activePage,
+  isCompact,
   onChange,
+  onCompactChange,
   onDockChange,
   onInsertImage,
   onOpenImageLibrary,
@@ -87,7 +96,9 @@ export function PdfAnnotationToolbar({
   state: PdfAnnotationToolbarState;
   dock: PdfToolbarDock;
   activePage: number;
+  isCompact: boolean;
   onChange: (change: Partial<PdfAnnotationToolbarState>) => void;
+  onCompactChange: (isCompact: boolean) => void;
   onDockChange: (dock: PdfToolbarDock) => void;
   onInsertImage: () => void;
   onOpenImageLibrary: () => void;
@@ -106,6 +117,81 @@ export function PdfAnnotationToolbar({
   const showRoundness = !["freedraw", "text", "eraser"].includes(state.tool);
   const canLockTool = state.tool !== "selection" && state.tool !== "eraser";
 
+  if (isCompact) {
+    return (
+      <div
+        role="toolbar"
+        aria-label={`Compact annotation tools for page ${activePage}`}
+        className={`pdf-shared-annotation-toolbar z-40 flex shrink-0 gap-1 border-slate-300 bg-white p-2 shadow-sm ${
+          isVertical
+            ? "w-20 flex-col overflow-y-auto border-x"
+            : "items-center border-y"
+        }`}
+      >
+        <div className={`flex gap-1 ${isVertical ? "flex-col" : ""}`}>
+          {TOOLS.filter((tool) => COMPACT_TOOLS.has(tool.value)).map((tool) => (
+            <button
+              key={tool.value}
+              type="button"
+              aria-label={tool.label}
+              aria-pressed={state.tool === tool.value}
+              title={tool.label}
+              className={`rounded border px-2 py-1 text-xs ${
+                state.tool === tool.value
+                  ? "border-sky-600 bg-sky-600 text-white"
+                  : "border-slate-300 hover:bg-slate-100"
+              }`}
+              onClick={() => onChange({ tool: tool.value })}
+            >
+              {tool.shortLabel}
+            </button>
+          ))}
+        </div>
+
+        <label className="text-xs">
+          <span className="sr-only">Pen size</span>
+          <select
+            className={fieldClass}
+            value={state.strokeWidth}
+            onChange={(event) =>
+              onChange({
+                strokeWidth: Number(event.target.value) as PenStrokeWidth,
+              })
+            }
+            title="Pen size"
+          >
+            {PEN_STROKE_WIDTHS.map((width) => (
+              <option key={width} value={width}>
+                {width} px
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex items-center text-xs">
+          <span className="sr-only">Pen colour</span>
+          <input
+            type="color"
+            value={state.strokeColor || "#1e1e1e"}
+            onChange={(event) => onChange({ strokeColor: event.target.value })}
+            className="h-7 w-8 cursor-pointer rounded border border-slate-300 bg-white p-0.5"
+            title="Pen colour"
+          />
+        </label>
+
+        <button
+          type="button"
+          className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100"
+          onClick={() => onCompactChange(false)}
+          aria-label="Expand annotation toolbar"
+          title="Show all annotation tools"
+        >
+          More
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div
       role="toolbar"
@@ -119,6 +205,15 @@ export function PdfAnnotationToolbar({
       <span className="text-xs font-semibold text-slate-500">
         Page {activePage}
       </span>
+      <button
+        type="button"
+        className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100"
+        onClick={() => onCompactChange(true)}
+        aria-label="Collapse annotation toolbar"
+        title="Show essential annotation tools only"
+      >
+        Compact
+      </button>
       <div className={`flex gap-1 ${isVertical ? "flex-col" : "flex-wrap"}`}>
         {TOOLS.map((tool) => (
           <button

@@ -196,6 +196,12 @@ function annotationInitialData(
         ...canonicalZoom,
         value: (canonicalZoom.value * viewerZoom) as AppState["zoom"]["value"],
       },
+      activeTool: {
+        type: toolbarState.tool,
+        customType: null,
+        locked: toolbarState.toolLocked,
+        lastActiveTool: null,
+      },
       currentItemStrokeColor: toolbarState.strokeColor,
       currentItemBackgroundColor: toolbarState.backgroundColor,
       currentItemFillStyle: toolbarState.fillStyle,
@@ -448,6 +454,8 @@ function PdfAnnotationCanvas({
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSaveRef = useRef<string | null>(null);
   const savePromiseRef = useRef<Promise<void> | null>(null);
+  const editorReadyFrameRef = useRef<number | null>(null);
+  const coordinateRefreshFrameRef = useRef<number | null>(null);
   const canonicalZoomRef = useRef<AppState["zoom"]>(
     parseScene(scene)?.appState.zoom ?? ({ value: 1 } as AppState["zoom"]),
   );
@@ -519,21 +527,71 @@ function PdfAnnotationCanvas({
     }
   }, [queueSave]);
 
+  const refreshCoordinates = useCallback(
+    (api: ExcalidrawImperativeAPI | null = apiRef.current) => {
+      if (!api || apiRef.current !== api) return;
+      if (coordinateRefreshFrameRef.current !== null) {
+        cancelAnimationFrame(coordinateRefreshFrameRef.current);
+      }
+
+      // Refresh once immediately and once after both Excalidraw and react-pdf
+      // have observed the resized page. Without the second refresh, pen input
+      // can briefly use the annotation layer's pre-zoom DOM offset.
+      api.refresh();
+      coordinateRefreshFrameRef.current = requestAnimationFrame(() => {
+        coordinateRefreshFrameRef.current = null;
+        if (apiRef.current !== api) return;
+        api.refresh();
+        coordinateRefreshFrameRef.current = requestAnimationFrame(() => {
+          coordinateRefreshFrameRef.current = null;
+          if (apiRef.current === api) api.refresh();
+        });
+      });
+    },
+    [],
+  );
+
   const handleExcalidrawApi = useCallback(
     (api: ExcalidrawImperativeAPI) => {
       apiRef.current = api;
-      requestAnimationFrame(() => {
+      if (editorReadyFrameRef.current !== null) {
+        cancelAnimationFrame(editorReadyFrameRef.current);
+      }
+      editorReadyFrameRef.current = requestAnimationFrame(() => {
+        editorReadyFrameRef.current = null;
         const element = layerRef.current;
         if (apiRef.current !== api || !element) return;
+        refreshCoordinates(api);
         applyPdfToolbarState(api, toolbarStateRef.current);
         onEditorReadyRef.current({ api, element, flush });
       });
     },
-    [flush],
+    [flush, refreshCoordinates],
   );
 
+  useLayoutEffect(() => {
+    if (width > 0 && height > 0 && viewerZoom > 0) refreshCoordinates();
+  }, [height, refreshCoordinates, viewerZoom, width]);
+
   useEffect(() => {
+    const layer = layerRef.current;
+    if (!layer) return;
+    const observer = new ResizeObserver(() => refreshCoordinates());
+    observer.observe(layer);
+    return () => observer.disconnect();
+  }, [refreshCoordinates]);
+
+  useLayoutEffect(() => {
     return () => {
+      if (editorReadyFrameRef.current !== null) {
+        cancelAnimationFrame(editorReadyFrameRef.current);
+        editorReadyFrameRef.current = null;
+      }
+      if (coordinateRefreshFrameRef.current !== null) {
+        cancelAnimationFrame(coordinateRefreshFrameRef.current);
+        coordinateRefreshFrameRef.current = null;
+      }
+      apiRef.current = null;
       onEditorReadyRef.current(null);
       void flush();
     };
@@ -826,6 +884,8 @@ export default function PdfEditorApp() {
     useState<PdfAnnotationToolbarState>(DEFAULT_PDF_ANNOTATION_TOOLBAR_STATE);
   const [annotationToolbarDock, setAnnotationToolbarDock] =
     useState<PdfToolbarDock>("top");
+  const [isAnnotationToolbarCompact, setIsAnnotationToolbarCompact] =
+    useState(false);
   const [pdfSource, setPdfSource] = useState<string | Blob | null>(null);
   const [status, setStatus] = useState("Loading…");
   const [isBusy, setIsBusy] = useState(false);
@@ -2223,7 +2283,9 @@ export default function PdfEditorApp() {
                     state={annotationToolbar}
                     dock={annotationToolbarDock}
                     activePage={pageNumber}
+                    isCompact={isAnnotationToolbarCompact}
                     onChange={changeAnnotationToolbar}
+                    onCompactChange={setIsAnnotationToolbarCompact}
                     onDockChange={setAnnotationToolbarDock}
                     onInsertImage={() => imageInputRef.current?.click()}
                     onOpenImageLibrary={() => setIsImageLibraryOpen(true)}
@@ -2443,7 +2505,9 @@ export default function PdfEditorApp() {
                     state={annotationToolbar}
                     dock={annotationToolbarDock}
                     activePage={pageNumber}
+                    isCompact={isAnnotationToolbarCompact}
                     onChange={changeAnnotationToolbar}
+                    onCompactChange={setIsAnnotationToolbarCompact}
                     onDockChange={setAnnotationToolbarDock}
                     onInsertImage={() => imageInputRef.current?.click()}
                     onOpenImageLibrary={() => setIsImageLibraryOpen(true)}
