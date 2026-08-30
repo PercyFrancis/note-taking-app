@@ -645,9 +645,14 @@ function PdfAnnotationCanvas({
         ...canonicalZoom,
         value: (canonicalZoom.value * viewerZoom) as AppState["zoom"]["value"],
       };
-      if (Math.abs(api.getAppState().zoom.value - scaledZoom.value) > 0.001) {
+      const appState = api.getAppState();
+      if (
+        Math.abs(appState.zoom.value - scaledZoom.value) > 0.001 ||
+        Math.abs(appState.width - width) > 0.5 ||
+        Math.abs(appState.height - height) > 0.5
+      ) {
         api.updateScene({
-          appState: { zoom: scaledZoom },
+          appState: { height, width, zoom: scaledZoom },
           captureUpdate: "NEVER",
         });
       }
@@ -2598,7 +2603,7 @@ export default function PdfEditorApp() {
   return (
     <main
       ref={observePdfEditorRoot}
-      className="flex h-dvh min-h-0 flex-col overflow-hidden bg-slate-100 text-slate-900"
+      className="fixed inset-0 flex min-h-0 w-full flex-col overflow-hidden overscroll-none bg-slate-100 text-slate-900"
       style={{ touchAction: "pan-x pan-y" }}
     >
       <input
@@ -2707,7 +2712,7 @@ export default function PdfEditorApp() {
               </div>
             )}
             <Document
-              className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:flex-row"
+              className="flex h-0 min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:flex-row"
               file={pdfSource}
               loading={<div className="p-8">Loading PDF…</div>}
             >
@@ -2742,36 +2747,49 @@ export default function PdfEditorApp() {
                 </aside>
               )}
               <div
-                className={`grid min-h-0 min-w-0 flex-1 overflow-hidden ${
-                  annotationToolbarDock === "top"
-                    ? "grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)]"
-                    : annotationToolbarDock === "bottom"
-                      ? "grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)_auto]"
-                      : annotationToolbarDock === "left"
-                        ? "grid-cols-[auto_minmax(0,1fr)] grid-rows-[minmax(0,1fr)]"
-                        : "grid-cols-[minmax(0,1fr)_auto] grid-rows-[minmax(0,1fr)]"
-                }`}
+                className="grid min-h-0 min-w-0 flex-1 overflow-hidden"
+                style={{
+                  gridTemplateAreas:
+                    annotationToolbarDock === "top"
+                      ? '"toolbar" "viewer"'
+                      : annotationToolbarDock === "bottom"
+                        ? '"viewer" "toolbar"'
+                        : annotationToolbarDock === "left"
+                          ? '"toolbar viewer"'
+                          : '"viewer toolbar"',
+                  gridTemplateColumns:
+                    annotationToolbarDock === "left" ||
+                    annotationToolbarDock === "right"
+                      ? annotationToolbarDock === "left"
+                        ? "auto minmax(0, 1fr)"
+                        : "minmax(0, 1fr) auto"
+                      : "minmax(0, 1fr)",
+                  gridTemplateRows:
+                    annotationToolbarDock === "top" ||
+                    annotationToolbarDock === "bottom"
+                      ? annotationToolbarDock === "top"
+                        ? "auto minmax(0, 1fr)"
+                        : "minmax(0, 1fr) auto"
+                      : "minmax(0, 1fr)",
+                }}
               >
-                {(annotationToolbarDock === "top" ||
-                  annotationToolbarDock === "left") && (
-                  <PdfAnnotationToolbar
-                    state={annotationToolbar}
-                    dock={annotationToolbarDock}
-                    activePage={pageNumber}
-                    isCompact={isAnnotationToolbarCompact}
-                    onChange={changeAnnotationToolbar}
-                    onCompactChange={setIsAnnotationToolbarCompact}
-                    onDockChange={setAnnotationToolbarDock}
-                    onInsertImage={() => imageInputRef.current?.click()}
-                    onOpenImageLibrary={() => setIsImageLibraryOpen(true)}
-                    onUndo={() => runActivePageHistory(false)}
-                    onRedo={() => runActivePageHistory(true)}
-                  />
-                )}
+                <PdfAnnotationToolbar
+                  state={annotationToolbar}
+                  dock={annotationToolbarDock}
+                  activePage={pageNumber}
+                  isCompact={isAnnotationToolbarCompact}
+                  onChange={changeAnnotationToolbar}
+                  onCompactChange={setIsAnnotationToolbarCompact}
+                  onDockChange={setAnnotationToolbarDock}
+                  onInsertImage={() => imageInputRef.current?.click()}
+                  onOpenImageLibrary={() => setIsImageLibraryOpen(true)}
+                  onUndo={() => runActivePageHistory(false)}
+                  onRedo={() => runActivePageHistory(true)}
+                />
                 <section
                   ref={observeViewer}
                   data-pdf-viewer
-                  className="min-h-0 min-w-0 flex-1 overscroll-contain overflow-auto p-4 [overflow-anchor:none]"
+                  className="min-h-0 min-w-0 overscroll-contain overflow-auto p-4 [grid-area:viewer] [overflow-anchor:none]"
                   onScroll={(event) => {
                     viewerScrollRef.current = {
                       left: event.currentTarget.scrollLeft,
@@ -2847,22 +2865,6 @@ export default function PdfEditorApp() {
                     ))}
                   </div>
                 </section>
-                {(annotationToolbarDock === "bottom" ||
-                  annotationToolbarDock === "right") && (
-                  <PdfAnnotationToolbar
-                    state={annotationToolbar}
-                    dock={annotationToolbarDock}
-                    activePage={pageNumber}
-                    isCompact={isAnnotationToolbarCompact}
-                    onChange={changeAnnotationToolbar}
-                    onCompactChange={setIsAnnotationToolbarCompact}
-                    onDockChange={setAnnotationToolbarDock}
-                    onInsertImage={() => imageInputRef.current?.click()}
-                    onOpenImageLibrary={() => setIsImageLibraryOpen(true)}
-                    onUndo={() => runActivePageHistory(false)}
-                    onRedo={() => runActivePageHistory(true)}
-                  />
-                )}
               </div>
             </Document>
           </div>
