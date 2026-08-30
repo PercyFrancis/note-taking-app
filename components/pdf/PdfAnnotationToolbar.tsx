@@ -106,6 +106,13 @@ export function PdfAnnotationToolbar({
   onRedo: () => void;
 }) {
   const isVertical = dock === "left" || dock === "right";
+  const dockClass = isVertical
+    ? `${isCompact ? "w-20" : "w-28"} h-full min-h-0 self-stretch flex-col overflow-y-auto ${
+        dock === "left" ? "border-r" : "border-l"
+      }`
+    : `w-full self-stretch flex-wrap items-center ${
+        dock === "top" ? "border-b" : "border-t"
+      }`;
   const fieldClass = isVertical
     ? "w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs"
     : "rounded border border-slate-300 bg-white px-2 py-1 text-xs";
@@ -122,11 +129,7 @@ export function PdfAnnotationToolbar({
       <div
         role="toolbar"
         aria-label={`Compact annotation tools for page ${activePage}`}
-        className={`pdf-shared-annotation-toolbar z-40 flex shrink-0 gap-1 border-slate-300 bg-white p-2 shadow-sm ${
-          isVertical
-            ? "w-20 flex-col overflow-y-auto border-x"
-            : "items-center border-y"
-        }`}
+        className={`pdf-shared-annotation-toolbar z-40 box-border flex shrink-0 gap-1 border-slate-300 bg-white p-2 shadow-sm ${dockClass}`}
       >
         <button
           type="button"
@@ -215,11 +218,7 @@ export function PdfAnnotationToolbar({
     <div
       role="toolbar"
       aria-label={`Annotation tools for page ${activePage}`}
-      className={`pdf-shared-annotation-toolbar z-40 flex shrink-0 gap-2 border-slate-300 bg-white p-2 shadow-sm ${
-        isVertical
-          ? "w-28 flex-col overflow-y-auto border-x"
-          : "flex-wrap items-center border-y"
-      }`}
+      className={`pdf-shared-annotation-toolbar z-40 box-border flex shrink-0 gap-2 border-slate-300 bg-white p-2 shadow-sm ${dockClass}`}
     >
       <button
         type="button"
