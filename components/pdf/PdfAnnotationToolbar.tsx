@@ -128,6 +128,16 @@ export function PdfAnnotationToolbar({
             : "items-center border-y"
         }`}
       >
+        <button
+          type="button"
+          className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100"
+          onClick={() => onCompactChange(false)}
+          aria-label="Expand annotation toolbar"
+          title="Show all annotation tools"
+        >
+          More
+        </button>
+
         <div className={`flex gap-1 ${isVertical ? "flex-col" : ""}`}>
           {TOOLS.filter((tool) => COMPACT_TOOLS.has(tool.value)).map((tool) => (
             <button
@@ -179,15 +189,24 @@ export function PdfAnnotationToolbar({
           />
         </label>
 
-        <button
-          type="button"
-          className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100"
-          onClick={() => onCompactChange(false)}
-          aria-label="Expand annotation toolbar"
-          title="Show all annotation tools"
-        >
-          More
-        </button>
+        <div className={`flex gap-1 ${isVertical ? "flex-col" : ""}`}>
+          <button
+            type="button"
+            className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100"
+            onClick={onUndo}
+            title={`Undo on page ${activePage}`}
+          >
+            Undo
+          </button>
+          <button
+            type="button"
+            className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100"
+            onClick={onRedo}
+            title={`Redo on page ${activePage}`}
+          >
+            Redo
+          </button>
+        </div>
       </div>
     );
   }
@@ -202,9 +221,6 @@ export function PdfAnnotationToolbar({
           : "flex-wrap items-center border-y"
       }`}
     >
-      <span className="text-xs font-semibold text-slate-500">
-        Page {activePage}
-      </span>
       <button
         type="button"
         className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100"
@@ -214,6 +230,9 @@ export function PdfAnnotationToolbar({
       >
         Compact
       </button>
+      <span className="text-xs font-semibold text-slate-500">
+        Page {activePage}
+      </span>
       <div className={`flex gap-1 ${isVertical ? "flex-col" : "flex-wrap"}`}>
         {TOOLS.map((tool) => (
           <button
