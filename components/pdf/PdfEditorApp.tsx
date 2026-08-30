@@ -929,7 +929,8 @@ export default function PdfEditorApp() {
   );
   const viewerWheelHandlerRef = useRef<(event: WheelEvent) => void>(() => {});
   const viewerTouchCleanupRef = useRef<(() => void) | null>(null);
-  const workspaceTouchCleanupRef = useRef<(() => void) | null>(null);
+  const editorTouchCleanupRef = useRef<(() => void) | null>(null);
+  const canvasRealignFrameRef = useRef<number | null>(null);
   const settingsChangedRef = useRef(false);
   const settingsSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -964,6 +965,9 @@ export default function PdfEditorApp() {
     () => () => {
       if (settingsSaveTimerRef.current) {
         clearTimeout(settingsSaveTimerRef.current);
+      }
+      if (canvasRealignFrameRef.current !== null) {
+        cancelAnimationFrame(canvasRealignFrameRef.current);
       }
     },
     [],
@@ -1182,22 +1186,17 @@ export default function PdfEditorApp() {
     };
   }, []);
 
-  const observeWorkspace = useCallback((element: HTMLDivElement | null) => {
-    workspaceTouchCleanupRef.current?.();
-    workspaceTouchCleanupRef.current = null;
+  const observePdfEditorRoot = useCallback((element: HTMLElement | null) => {
+    editorTouchCleanupRef.current?.();
+    editorTouchCleanupRef.current = null;
     if (!element) return;
 
-    const belongsToWorkspace = (event: Event) => {
-      const target = event.target;
-      return target instanceof Node && element.contains(target);
-    };
-    const blockWorkspacePinch = (event: Event) => {
-      if (!belongsToWorkspace(event)) return;
+    const blockPdfEditorPinch = (event: Event) => {
       event.preventDefault();
       event.stopImmediatePropagation();
     };
-    const blockWorkspaceMultiTouch = (event: TouchEvent) => {
-      if (event.touches.length < 2 || !belongsToWorkspace(event)) return;
+    const blockPdfEditorMultiTouch = (event: TouchEvent) => {
+      if (event.touches.length < 2) return;
       event.preventDefault();
       event.stopImmediatePropagation();
     };
@@ -1205,58 +1204,88 @@ export default function PdfEditorApp() {
 
     window.addEventListener(
       "touchstart",
-      blockWorkspaceMultiTouch,
+      blockPdfEditorMultiTouch,
       nonPassiveCapture,
     );
     window.addEventListener(
       "touchmove",
-      blockWorkspaceMultiTouch,
+      blockPdfEditorMultiTouch,
       nonPassiveCapture,
     );
     window.addEventListener(
       "gesturestart",
-      blockWorkspacePinch,
+      blockPdfEditorPinch,
       nonPassiveCapture,
     );
     window.addEventListener(
       "gesturechange",
-      blockWorkspacePinch,
+      blockPdfEditorPinch,
       nonPassiveCapture,
     );
     window.addEventListener(
       "gestureend",
-      blockWorkspacePinch,
+      blockPdfEditorPinch,
       nonPassiveCapture,
     );
 
-    workspaceTouchCleanupRef.current = () => {
+    editorTouchCleanupRef.current = () => {
       window.removeEventListener(
         "touchstart",
-        blockWorkspaceMultiTouch,
+        blockPdfEditorMultiTouch,
         nonPassiveCapture,
       );
       window.removeEventListener(
         "touchmove",
-        blockWorkspaceMultiTouch,
+        blockPdfEditorMultiTouch,
         nonPassiveCapture,
       );
       window.removeEventListener(
         "gesturestart",
-        blockWorkspacePinch,
+        blockPdfEditorPinch,
         nonPassiveCapture,
       );
       window.removeEventListener(
         "gesturechange",
-        blockWorkspacePinch,
+        blockPdfEditorPinch,
         nonPassiveCapture,
       );
       window.removeEventListener(
         "gestureend",
-        blockWorkspacePinch,
+        blockPdfEditorPinch,
         nonPassiveCapture,
       );
     };
   }, []);
+
+  const realignAnnotationCanvases = () => {
+    pendingPinchZoomRef.current = null;
+    pinchSessionRef.current = null;
+    suppressTouchUntilClearRef.current = false;
+    activeTouchPointersRef.current.clear();
+    if (pagesRef.current) {
+      pagesRef.current.style.transform = "";
+      pagesRef.current.style.transformOrigin = "";
+      pagesRef.current.style.willChange = "";
+    }
+    if (canvasRealignFrameRef.current !== null) {
+      cancelAnimationFrame(canvasRealignFrameRef.current);
+    }
+
+    const refreshMountedEditors = () => {
+      for (const editor of annotationEditorsRef.current.values()) {
+        editor.api.refresh();
+      }
+    };
+    refreshMountedEditors();
+    canvasRealignFrameRef.current = requestAnimationFrame(() => {
+      refreshMountedEditors();
+      canvasRealignFrameRef.current = requestAnimationFrame(() => {
+        canvasRealignFrameRef.current = null;
+        refreshMountedEditors();
+      });
+    });
+    setStatus("Canvas realigned");
+  };
 
   useLayoutEffect(() => {
     const wasFullscreen = wasViewportFullscreenRef.current;
@@ -2137,7 +2166,11 @@ export default function PdfEditorApp() {
   };
 
   return (
-    <main className="flex h-dvh min-h-0 flex-col overflow-hidden bg-slate-100 text-slate-900">
+    <main
+      ref={observePdfEditorRoot}
+      className="flex h-dvh min-h-0 flex-col overflow-hidden bg-slate-100 text-slate-900"
+      style={{ touchAction: "pan-x pan-y" }}
+    >
       <input
         ref={fileInputRef}
         type="file"
@@ -2229,7 +2262,6 @@ export default function PdfEditorApp() {
           </section>
         ) : (
           <div
-            ref={observeWorkspace}
             className={`pdf-workspace flex min-h-0 min-w-0 flex-1 overflow-hidden bg-slate-100 ${
               isFullscreen ? "fixed inset-0 z-50" : "h-full"
             }`}
@@ -2376,6 +2408,14 @@ export default function PdfEditorApp() {
                         +
                       </button>
                     </div>
+                    <button
+                      type="button"
+                      className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100"
+                      onClick={realignAnnotationCanvases}
+                      title="Reset annotation canvas alignment"
+                    >
+                      Realign
+                    </button>
                     <button
                       type="button"
                       className="rounded border px-2 py-1 text-sm"
